@@ -1,0 +1,82 @@
+name: Publish verified AE test APK
+
+# One-time transfer of the already built/signed APK. No rebuild or signing key
+# is needed. The temporary source expires; future transfers need a new URL.
+on:
+  push:
+    branches: [android-performance-test]
+    paths: ['.github/workflows/publish-ae-test.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-ae-test-v0.1-ae-test.1
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'XHYN-PH/TLOU-AE'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: v0.1-ae-test.1
+      APK_SHA256: 6e72eed0d97daee4416ac89eff3e05c1269a93bd5664f8ca233a943253cf57fc
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify the signed APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ae-release"
+          cd "$RUNNER_TEMP/ae-release"
+          # Tmpfiles issues a short-lived signed download link on the file page.
+          curl -fL --retry 3 --connect-timeout 20 --max-time 60 \
+            https://tmpfiles.org/w0Ae5Mdll5Ae/tlou-ae-test-arm64.apk -o page.html
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from urllib.parse import urlsplit
+          class Links(HTMLParser):
+              url = None
+              def handle_starttag(self, tag, attrs):
+                  attrs = dict(attrs)
+                  if tag == 'a' and 'download' in attrs.get('class', '').split():
+                      self.url = attrs.get('href')
+          page = Links()
+          page.feed(open('page.html').read())
+          url = urlsplit(page.url or '')
+          assert url.scheme == 'https' and url.hostname == 'tmpfiles.org'
+          assert url.path.startswith('/dl/')
+          open('download-url.txt', 'w').write(page.url)
+          PY
+          curl -fL --retry 3 --connect-timeout 20 --max-time 300 \
+            "$(cat download-url.txt)" -o TLOU-AE-test-arm64.apk
+          printf '%s  TLOU-AE-test-arm64.apk\n' "$APK_SHA256" > TLOU-AE-test-arm64.apk.sha256
+          sha256sum -c TLOU-AE-test-arm64.apk.sha256
+          cp "$GITHUB_WORKSPACE/android/CHANGELOG_AE.md" CHANGELOG_AE.md
+          cp "$GITHUB_WORKSPACE/android/TEST_APK.md" TEST_APK.md
+      - name: Upload, verify and publish the existing prerelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/ae-release"
+          # Keep the release authored by XHYN-PH and tied to the tested source.
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > release.json
+          python3 - <<'PY'
+          import json
+          r = json.load(open('release.json'))
+          assert r['id'] == 437577989
+          assert r['author']['login'] == 'XHYN-PH'
+          assert r['target_commitish'] == '54f98146fd9cb5e6410cabe78621dc10f04af410'
+          PY
+          gh release upload "$RELEASE_TAG" TLOU-AE-test-arm64.apk \
+            TLOU-AE-test-arm64.apk.sha256 CHANGELOG_AE.md TEST_APK.md \
+            --repo "$GITHUB_REPOSITORY" --clobber
+          mkdir verify
+          gh release download "$RELEASE_TAG" --pattern TLOU-AE-test-arm64.apk \
+            --repo "$GITHUB_REPOSITORY" --dir verify
+          printf '%s  verify/TLOU-AE-test-arm64.apk\n' "$APK_SHA256" | sha256sum -c -
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --draft=false --prerelease --latest=false
