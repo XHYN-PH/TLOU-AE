@@ -8,6 +8,7 @@
 #include "video_core/amdgpu/liverpool.h"
 
 #include "gow3_toggles.h"
+#include "gow3_mobile.h"
 #include "common/assert.h"
 #include "common/debug.h"
 #include "common/div_ceil.h"
@@ -22,6 +23,7 @@
 #include "video_core/renderer_vulkan/vk_scheduler.h"
 #include "video_core/renderer_vulkan/vk_wait_diagnostics.h"
 #include "video_core/texture_cache/aliasing.h"
+#include "video_core/texture_cache/gc_policy.h"
 #include "video_core/texture_cache/host_compatibility.h"
 #include "video_core/texture_cache/texture_cache.h"
 #include "gow3_prompts.h"
@@ -1296,7 +1298,13 @@ ImageId TextureCache::FindImage(ImageDesc& desc, bool exact_fmt) {
 
 ImageId TextureCache::FindImageFromRange(VAddr address, size_t size, bool ensure_valid) {
     ImageIds image_ids;
-    ForEachImageInRegion(address, size, [&](ImageId image_id, Image& image) {
+    // An exact-base lookup can only match an image indexed in the page containing
+    // 'address'. Scanning every page of the requested copy redundantly revisits
+    // unrelated overlapping images, and may scale with large depth/color buffers.
+    // ForEachImageInRegion filters by overlap; a positive 1-byte query preserves
+    // every candidate whose guest_address equals 'address'. This is the same
+    // first-page lookup invariant used by newer upstream shadPS4.
+    ForEachImageInRegion(address, 1, [&](ImageId image_id, Image& image) {
         if (image.info.guest_address != address) {
             return;
         }
@@ -1323,6 +1331,29 @@ ImageId TextureCache::FindImageFromRange(VAddr address, size_t size, bool ensure
     }
     return {};
 }
+
+ImageId TextureCache::FindStencilPlaneDepth(VAddr address) {
+    ImageId depth_id{};
+    ForEachImageInRegion(address, 1, [&](ImageId, Image& image) {
+        if (image.info.guest_address == address) {
+            if (const ImageId id = GetAssociatedDepth(image)) {
+                depth_id = id;
+            }
+        }
+    });
+    return depth_id;
+}
+
+ImageId TextureCache::FindStencilTexture(VAddr address) {
+    ImageId texture_id{};
+    ForEachImageInRegion(address, 1, [&](ImageId image_id, Image& image) {
+        if (image.info.guest_address == address && image.info.pixel_format == vk::Format::eR8Uint) {
+            texture_id = image_id;
+        }
+    });
+    return texture_id;
+}
+
 
 ImageView& TextureCache::FindTexture(ImageId image_id, const ImageDesc& desc, ViewMemo* memo,
                                      bool refresh) {
@@ -1796,7 +1827,8 @@ void TextureCache::GarbageCollectImages() {
             return env && env[0] == '1';
         }();
         if (instance.IsIntegrated() || forced_budget || !startup_rule) {
-            const u64 budget = forced_budget ? forced_budget : instance.GetDeviceMemoryBudgetNow();
+            const u64 budget = Gow3Mobile::MemoryBudget(
+                forced_budget ? forced_budget : instance.GetDeviceMemoryBudgetNow(), total_used_memory);
             if (budget != 0) {
                 trigger_gc_memory = budget / 10 * 7;
                 pressure_gc_memory = budget / 100 * 85;
@@ -1823,32 +1855,43 @@ void TextureCache::GarbageCollectImages() {
     bool pressured = false;
     bool aggresive = false;
     u64 ticks_to_destroy = 0;
-    size_t num_deletions = 0;
-
+    Detail::GcCleanupBudget scan;
+    u64 idle_tick = gc_tick;
+    bool warm_grace = false;
+    static const bool warm = [] {const char* v=std::getenv("TLOU_WARM_TEXTURES");return v && v[0]=='1';}();
+    if (warm) {
+        const u64 second = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        if(second!=gc_second){gc_second=second;gc_tick_at_second[second%gc_tick_at_second.size()]=gc_tick;}
+        const u64 seconds = Gow3Mobile::MemoryShort() ? 5 : 20;
+        if(!gc_warm_started)gc_warm_started=second;
+        warm_grace=second-gc_warm_started<seconds;
+        idle_tick=gc_tick_at_second[(second-seconds)%gc_tick_at_second.size()];
+    }
+    u64 below_tick = 0;
     const auto configure = [&](bool allow_aggressive) {
         pressured = total_used_memory >= pressure_gc_memory;
         aggresive = allow_aggressive && total_used_memory >= critical_gc_memory;
-        ticks_to_destroy = aggresive ? 160 : pressured ? 80 : 16;
+        ticks_to_destroy = Detail::GcCleanupBudget::Age(aggresive, pressured);
         ticks_to_destroy = std::min(ticks_to_destroy, gc_tick);
-        num_deletions = aggresive ? 40 : pressured ? 20 : 10;
+        scan.Reset(aggresive ? 40 : pressured ? 20 : 10);
+        if(warm_grace && !pressured && !aggresive)scan.Reset(0);
+        below_tick=gc_tick-ticks_to_destroy;
+        if(warm && !pressured && !aggresive)below_tick=std::min(below_tick,idle_tick);
     };
     const auto clean_up = [&](ImageId image_id) {
-        if (num_deletions == 0) {
+        if (!scan.Visit()) {
             return true;
         }
-        --num_deletions;
         auto& image = slot_images[image_id];
         ResolveReadbacks(image.info.guest_address, image.info.guest_size, true,
                          ReadbackSource::CacheCleanup);
         const bool download = image.SafeToDownload();
         const bool tiled = image.info.IsTiled();
-        if (tiled && download) {
-            // This is a workaround for now. We can't handle non-linear image downloads.
+        if (!Detail::GcCleanupBudget::Eligible(tiled, download, pressured)) {
+            lru_cache.Touch(image.lru_id, gc_tick);
             return false;
         }
-        if (download && !pressured) {
-            return false;
-        }
+        scan.Freed();
         if (download) {
             // gow3: synchronously, while the image still protects its pages. A deferred
             // write-back landed after FreeImage had unprotected them, over whatever the game
@@ -1860,12 +1903,12 @@ void TextureCache::GarbageCollectImages() {
         FreeImage(image_id);
         if (total_used_memory < critical_gc_memory) {
             if (aggresive) {
-                num_deletions >>= 2;
+                scan.remaining >>= 2;
                 aggresive = false;
                 return false;
             }
             if (pressured && total_used_memory < pressure_gc_memory) {
-                num_deletions >>= 1;
+                scan.remaining >>= 1;
                 pressured = false;
             }
         }
@@ -1874,12 +1917,12 @@ void TextureCache::GarbageCollectImages() {
 
     // Try to remove anything old enough and not high priority.
     configure(false);
-    lru_cache.ForEachItemBelow(gc_tick - ticks_to_destroy, clean_up);
+    lru_cache.ForEachItemBelow(below_tick, clean_up);
 
     if (total_used_memory >= critical_gc_memory) {
         // If we are still over the critical limit, run an aggressive GC
         configure(true);
-        lru_cache.ForEachItemBelow(gc_tick - ticks_to_destroy, clean_up);
+        lru_cache.ForEachItemBelow(below_tick, clean_up);
     }
     // gow3: evictions under memory pressure, at most every 5 s (GOW3_FRAME_STATS or not).
     if (pressured || gc_downloads != 0) {

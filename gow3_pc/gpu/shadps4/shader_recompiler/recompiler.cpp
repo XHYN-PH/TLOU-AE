@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <bit>
+#include <cstdlib>
+#include <string_view>
+#include "shader_recompiler/ir/ir_emitter.h"
+#include <atomic>
 #include "common/logging/classes.h"
 #include "shader_recompiler/frontend/control_flow_graph.h"
 #include "shader_recompiler/frontend/decode.h"
@@ -67,7 +71,16 @@ IR::Program TranslateProgram(const std::span<const u32>& code, Pools& pools, Inf
     // Ensure first instruction is expected.
     constexpr u32 token_mov_vcchi = 0xBEEB03FF;
     if (code[0] != token_mov_vcchi) {
-        LOG_WARNING(Render_Recompiler, "First instruction is not s_mov_b32 vcc_hi, #imm");
+        // TLOU valid shaders commonly omit this optional header. Thousands of
+        // identical warnings serialized compiler workers on the logger mutex.
+        // Keep first examples and periodic totals; translation/error handling is unchanged.
+        static std::atomic<u32> missing_header{0};
+        const u32 count = missing_header.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (count <= 4 || (count & 1023) == 0) {
+            LOG_WARNING(Render_Recompiler,
+                        "Shader {:#x} starts with {:#x}, without s_mov_b32 vcc_hi header "
+                        "({} occurrences; repeated warnings limited)", info.pgm_hash, code[0], count);
+        }
     }
 
     Gcn::GcnCodeSlice slice(code.data(), code.data() + code.size());
@@ -160,6 +173,29 @@ IR::Program TranslateProgram(const std::span<const u32>& code, Pools& pools, Inf
     Shader::Optimization::DeadCodeEliminationPass(program);
     if (info.sw_stage == SwStage::Fragment && profile.needs_integer_interpolation_fix) {
         Shader::Optimization::InterpolatedIntegerPass(program);
+    }
+    // gow3 2 Nov 2026 (The Last of Us, GOW3_RAIN_SCALE sets it, 1 is the game's): rain falls as
+    // solid white streaks. Compared with a PS4 video of the same scene, they are about 8 times
+    // too strong. Why is not known: the noise and the rain shadow test are not it, and the
+    // constants match the shader's formula, so this scales the alpha's strength.
+    if (info.pgm_hash == 0x2288df23 && std::getenv("GOW3_RAIN_SCALE") &&
+        std::string_view(std::getenv("GOW3_RAIN_SCALE")) != "1") {
+        const char* env = std::getenv("GOW3_RAIN_SCALE");
+        const float scale = env ? std::strtof(env, nullptr) : 0.12f;
+        for (IR::Block* const block : program.blocks) {
+            for (IR::Inst& inst : block->Instructions()) {
+                if (inst.GetOpcode() != IR::Opcode::FPSaturate32 || inst.Arg(0).IsImmediate()) {
+                    continue;
+                }
+                IR::Inst* const alpha = inst.Arg(0).TryInst();
+                if (alpha && alpha->GetOpcode() == IR::Opcode::FPMul32) {
+                    IR::IREmitter ir{*alpha->GetParent(),
+                                     IR::Block::InstructionList::s_iterator_to(*alpha)};
+                    const IR::F32 strength{alpha->Arg(0)};
+                    alpha->SetArg(0, ir.FPMul(strength, ir.Imm32(scale)));
+                }
+            }
+        }
     }
     Shader::Optimization::CollectShaderInfoPass(program, profile);
     Shader::IR::DumpProgram(program, info);

@@ -1,0 +1,54 @@
+plugins {
+    id 'com.android.application'
+}
+def tlouTestBuild = providers.gradleProperty('tlouTestBuild').orElse('false').get().toBoolean()
+android {
+    namespace 'ro.cobrabm.fexdroid'
+    compileSdk 35
+    // Reuse the toolchain that built the native payload, including installations
+    // outside the SDK directory (as in the cloud build environment).
+    if (System.getenv('TLOU_NDK')) {
+        ndkVersion '29.0.14206865'
+        ndkPath System.getenv('TLOU_NDK')
+    }
+    defaultConfig {
+        applicationId tlouTestBuild ? 'com.xhyn.tlou.ae.test' : 'com.daedalus.tlou.remastered'
+        manifestPlaceholders = [appLabel: tlouTestBuild ? 'TLOU AE Test' : 'The Last of Us Remastered Android']
+        minSdk 30
+        // Android 10/11 allow execution of extracted native payload in app-private files
+        // for legacy target SDK. Keep separate from SDK version for compilation.
+        targetSdk 28
+        versionCode 38
+        versionName tlouTestBuild ? '0.1-ae-test' : '0.1'
+    }
+    buildTypes {
+        release { minifyEnabled false }
+    }
+    // This is an experimental sideload-only native research build, not a
+    // Google Play submission. Keep targetSdk 28 until native executable
+    // extraction/launch is migrated to a modern Android-safe mechanism.
+    // Disable only the store-policy lint finding; retain all other release
+    // lint checks and Android build validation.
+    lint {
+        disable 'ExpiredTargetSdkVersion'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    sourceSets {
+        main {
+            assets.srcDirs += ['../../out/android-bionic/apk-assets']
+            jniLibs.srcDirs += ['../../out/android-bionic/apk-jni']
+        }
+    }
+    packaging {
+        jniLibs { useLegacyPackaging = true }
+    }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.14.1'
+}
+android.testOptions.unitTests.includeAndroidResources = true

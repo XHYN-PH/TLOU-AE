@@ -8,6 +8,10 @@
 #include <ctime>
 #include <string>
 #include <thread>
+#ifdef __ANDROID__
+#include "../../../src/android_cpu_policy.h"
+#include "gow3_mobile.h"
+#endif
 
 
 #include "common/error.h"
@@ -178,6 +182,9 @@ bool AccurateSleep(const std::chrono::nanoseconds duration, std::chrono::nanosec
 #else
 
 void SetCurrentThreadPriority(ThreadPriority new_priority) {
+#ifdef __ANDROID__
+    tlou_cpu_policy_apply(nullptr,0);
+#endif
     pthread_t this_thread = pthread_self();
 
     const auto scheduling_type = SCHED_OTHER;
@@ -234,6 +241,9 @@ void SetThreadName(void* thread, const char* name) {
 // MinGW with the POSIX threading model does not support pthread_setname_np
 #if !defined(_WIN32) || defined(_MSC_VER)
 void SetCurrentThreadName(const char* name) {
+#ifdef __ANDROID__
+    Gow3Mobile::ThreadNamed(name);
+#endif
     // gow3: guest thread names are kept by the C runtime.
 #ifdef __APPLE__
     pthread_setname_np(name);

@@ -93,8 +93,12 @@ previous execution. Include the device, GPU, driver, game version and settings.
 
 ## Development
 
-The Android implementation and verified build workflow are in the
-[Android source tree](https://github.com/erickmendes22/tlou-remastered-android/tree/tlou-ui-approval-log32-20261105). See the [Android build guide](android/README.md).
+This checkout includes the Android implementation and its upstream build workflow.
+See the [Android build guide](android/README.md) and
+[development implementation status](android/IMPLEMENTATION_STATUS.md) for the
+current changes, checks and outstanding native/device validation. The
+[upstream Android source tree](https://github.com/erickmendes22/tlou-remastered-android/tree/tlou-ui-approval-log32-20261105)
+remains the reference base.
 The repository's historical Windows code remains available; it is not the APK
 build procedure. Documentation changes alone do not require generating an APK.
 
