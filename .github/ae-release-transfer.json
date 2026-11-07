@@ -1,0 +1,8 @@
+{
+  "tag": "v0.2-ae-test.1",
+  "source_commit": "135a88c40cc3f1559eb3eb38a9db9ef170b0eac9",
+  "sha256": "d33843fed94b679e9430e89928bb3c0388a777eb78e522bd9d01aba7f0e2a3b2",
+  "apk": "TLOU-AE-v0.2-arm64.apk",
+  "release_id": 437730715,
+  "mirror": "https://tmpfiles.org/wnA75x7Ze0B0/tlou-ae-v0.2-arm64.apk"
+}
