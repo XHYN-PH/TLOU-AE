@@ -1,7 +1,7 @@
 plugins {
     id 'com.android.application'
 }
-def tlouTestBuild = providers.gradleProperty('tlouTestBuild').orElse('false').get().toBoolean()
+def tlouTestBuild = providers.gradleProperty('tlouTestBuild').orElse('true').get().toBoolean()
 android {
     namespace 'ro.cobrabm.fexdroid'
     compileSdk 35
@@ -13,13 +13,13 @@ android {
     }
     defaultConfig {
         applicationId tlouTestBuild ? 'com.xhyn.tlou.ae.test' : 'com.daedalus.tlou.remastered'
-        manifestPlaceholders = [appLabel: tlouTestBuild ? 'TLOU AE Test' : 'The Last of Us Remastered Android']
+        manifestPlaceholders = [appLabel: 'TLOU-AE']
         minSdk 30
         // Android 10/11 allow execution of extracted native payload in app-private files
         // for legacy target SDK. Keep separate from SDK version for compilation.
         targetSdk 28
-        versionCode 38
-        versionName tlouTestBuild ? '0.1-ae-test' : '0.1'
+        versionCode 39
+        versionName '0.2-ae-test'
     }
     buildTypes {
         release { minifyEnabled false }

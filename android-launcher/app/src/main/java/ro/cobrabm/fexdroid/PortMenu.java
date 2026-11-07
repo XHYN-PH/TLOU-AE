@@ -35,7 +35,7 @@ final class PortMenu {
 
     PortMenu(Activity activity,boolean inGame,Actions actions) {
         this.activity=activity;this.inGame=inGame;this.actions=actions;
-        if(!inGame)throw new IllegalArgumentException("O menu do jogo é exclusivo da GameActivity");
+        if(!inGame)throw new IllegalArgumentException("The game menu is available only in the game activity");
         prefs=PortSettings.prefs(activity);
     }
     private int dp(int value) {
@@ -51,7 +51,7 @@ final class PortMenu {
         LinearLayout root=new LinearLayout(activity);root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(20),dp(16),dp(20),dp(18));root.setBackgroundColor(BG);
         LinearLayout header=new LinearLayout(activity);header.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title=text("THE LAST OF US / DAEDALUS",15,INK);
+        TextView title=text("TLOU-AE · XHYN_PH",15,INK);
         title.setTypeface(Typeface.create("sans-serif-condensed",Typeface.BOLD));
         header.addView(title,new LinearLayout.LayoutParams(0,-2,1));
         Button close=new Button(activity);close.setText("×");close.setTextSize(22);close.setAllCaps(false);
@@ -128,7 +128,7 @@ final class PortMenu {
         content.addView(spinner,new LinearLayout.LayoutParams(-1,dp(48)));
     }
     private void language() {
-        heading("Idioma do aplicativo");
+        heading("App language");
         Spinner spinner=new Spinner(activity,Spinner.MODE_DROPDOWN);
         ArrayAdapter<String> adapter=new ArrayAdapter<>(activity,
             android.R.layout.simple_spinner_dropdown_item,TlouLanguage.options(activity));
@@ -144,7 +144,7 @@ final class PortMenu {
             }
         });
         content.addView(spinner,new LinearLayout.LayoutParams(-1,dp(50)));
-        note("O idioma do jogo é escolhido no próprio The Last of Us.");
+        note("Choose the game language inside The Last of Us.");
     }
     private void setScreenMode(boolean fill) {
         prefs.edit().putBoolean("fullscreen",fill).apply();
@@ -152,13 +152,13 @@ final class PortMenu {
         render(); // visible selection responds without dismiss/restarting game
     }
     private void screenMode() {
-        heading("Modo de exibição");
+        heading("Display mode");
         boolean full=prefs.getBoolean("fullscreen",false);
-        row((full?"○ ":"● ")+tr("Tela normal (proporção original)"),
+        row((full?"○ ":"● ")+tr("Normal screen (original aspect ratio)"),
             ()->setScreenMode(false));
-        row((full?"● ":"○ ")+tr("Tela cheia (preencher a tela)"),
+        row((full?"● ":"○ ")+tr("Fullscreen (fill display)"),
             ()->setScreenMode(true));
-        note("O modo muda durante o jogo, sem reiniciar.");
+        note("Switch modes during gameplay without restarting.");
     }
     private void slider(String key,String label,int min,int max,int fallback) {
         TextView title=text(tr(label)+": "+prefs.getInt(key,fallback),13,INK);
@@ -179,106 +179,106 @@ final class PortMenu {
     private void go(String target) {section=target;render();}
     private void render() {
         content.removeAllViews();
-        if(!"home".equals(section))row("‹ Voltar",()->go("home"));
+        if(!"home".equals(section))row("‹ Back",()->go("home"));
         switch(section) {
             case "home":
-                heading(inGame?"DURANTE O JOGO":"MENU");
-                row("Vídeo e tela",()->go("video"));
+                heading(inGame?"IN GAME":"MENU");
+                row("Video and display",()->go("video"));
                 screenMode(); // separate one-tap fit and fill actions in the main in-game menu
                 row("Patches",()->go("patches"));
-                row("Idioma e interface",()->go("settings"));
-                row("Controles e HUD",()->go("hud"));
+                row("Language and interface",()->go("settings"));
+                row("Controls and HUD",()->go("hud"));
                 if(!inGame) {
-                    row("Jogo e drivers",()->go("library"));
-                    row("Saves",()->go("saves"));
+                    row("Game and drivers",()->go("library"));
+                    row("Save data",()->go("saves"));
                 }
-                action("Export logs ZIP",actions::exportLogs);
-                row("Sobre",()->go("about"));
-                action("Voltar ao launcher",actions::exitGame);
-                action("Sair do aplicativo",actions::quitApp);
+                action("Create diagnostic report",actions::exportLogs);
+                row("About",()->go("about"));
+                action("Return to launcher",actions::exitGame);
+                action("Exit application",actions::quitApp);
                 break;
             case "video":
-                heading("VÍDEO E TELA");
+                heading("VIDEO AND DISPLAY");
                 PerformanceControls.resolution(activity,content,actions::changed);
                 PerformanceControls.advanced(activity,content,actions::changed);
-                choice("resolution","Resolução interna",
-                    new String[]{"Original (1080p)","1280 × 720","960 × 540","640 × 360"},
-                    new String[]{"original","720","540","360"},"original");
                 screenMode();
-                choice("fps_limit","Limite de FPS",
+                choice("fps_limit","FPS limit",
                     new String[]{"30 FPS","60 FPS"},
                     new String[]{"30","60"},"60");
                 toggle("vsync","VSync",true);
-                choice("render_path","Método de resolução",
-                    new String[]{"Unificado: cena e mira na mesma resolução",
-                                 "Compatibilidade: interface 1080p (proxies)"},
-                    new String[]{"guest","proxy"},"guest");
-                note("Reinicie o jogo para aplicar o método de resolução.");
-                note("Sincronização da geometria: Completo (único modo). "
-                     +"Preserva a correção das deformações.");
-                note("Reinicie o jogo para aplicar o método de resolução.");
+                note("FPS and VSync changes require a restart. VSync off may reduce queuing but discard intermediate frames.");
+                note("Geometry synchronization: Full. "
+                     +"Preserves geometry corrections.");
+                note("Restart the game to apply the resolution method.");
                 break;
             case "patches":
                 heading("PATCHES");
-                note("Patches validados para o eboot reconhecido. Reinicie para aplicar.");
-                toggle("ssao","Desativar SSAO",false);
-                toggle("motion_blur","Desativar desfoque de movimento",false);
-                toggle("depth_of_field","Desativar profundidade de campo",false);
-                toggle("bloom","Desativar bloom",false);
-                toggle("sunlight_shadows","Desativar sombras solares",false);
-                toggle("subsurface","Desativar subsurface",false);
-                row("Restaurar patches e resolução",()->{
-                    SharedPreferences.Editor e=prefs.edit().putString("resolution","original").remove("custom_scale").remove("render_scale");
+                note("Patches verified for the recognized eboot. Restart to apply.");
+                toggle("ssao","Disable SSAO",false);
+                note(PerformanceControls.effectHelp("ssao"));
+                toggle("motion_blur","Disable motion blur",false);
+                note(PerformanceControls.effectHelp("motion_blur"));
+                toggle("depth_of_field","Disable depth of field",false);
+                note(PerformanceControls.effectHelp("depth_of_field"));
+                toggle("bloom","Disable bloom",false);
+                note(PerformanceControls.effectHelp("bloom"));
+                toggle("sunlight_shadows","Disable sun shadows",false);
+                note(PerformanceControls.effectHelp("sunlight_shadows"));
+                toggle("subsurface","Disable subsurface scattering",false);
+                note(PerformanceControls.effectHelp("subsurface"));
+                row("Reset patches and resolution",()->{
+                    PortSettings.setScale(activity,100);
+                    SharedPreferences.Editor e=prefs.edit();
                     for(String key:PortSettings.EFFECTS)e.putBoolean(key,false);
                     e.apply();actions.changed();render();
                 });
                 break;
             case "settings":
-                heading("AJUSTES");
-                language();
+                heading("SETTINGS");
+                note("TLOU-AE · English · XHYN_PH");
                 screenMode();
-                toggle("gpu_turbo","Adreno Turbo (sem root)",false);
-                note("Usa KGSL sem root; respeita limites térmicos. Pode ser ativado ou desativado durante o jogo.");
-                toggle("launch_direct","Entrar direto no jogo",false);
+                toggle("gpu_turbo","Adreno Turbo (no root)",false);
+                note("Uses KGSL without root; thermal limits apply. Toggle while playing.");
+                toggle("launch_direct","Launch directly into game",false);
                 break;
             case "hud":
-                heading("CONTROLES E HUD");
-                toggle("hud_visible","Mostrar FPS",true);
-                choice("hud_mode","Estilo do HUD",
-                    new String[]{"Completa (FPS / GPU / CPU)","FPS + tempo de frame","Apenas FPS"},
+                heading("CONTROLS AND HUD");
+                toggle("hud_visible","Show FPS",true);
+                choice("hud_mode","HUD style",
+                    new String[]{"Full (FPS / GPU / CPU)","FPS + frame time","FPS only"},
                     new String[]{"full","compact","minimal"},"full");
-                choice("hud_corner","Posição do HUD",
-                    new String[]{"Superior esquerdo","Superior direito",
-                        "Inferior esquerdo","Inferior direito","Superior central",
-                        "Centro da tela","Inferior central","Central esquerdo",
-                        "Central direito","Personalizada (arrastar)"},
+                choice("hud_corner","HUD position",
+                    new String[]{"Top left","Top right",
+                        "Bottom left","Bottom right","Top center",
+                        "Screen center","Bottom center","Middle left",
+                        "Middle right","Custom (drag)"},
                     new String[]{"0","1","2","3","4","5","6","7","8","-1"},"0");
-                toggle("hud_gpu","Uso da GPU",true);
-                toggle("hud_cpu","Uso da CPU (jogo)",true);
-                slider("hud_size","Tamanho do HUD",10,26,12);
-                slider("hud_opacity","Opacidade do fundo (%)",0,100,65);
-                toggle("touch_visible","Controles na tela",true);
-                choice("control_color","Cor dos controles",
-                    new String[]{"Verde oliva","Âmbar","Branco","Vermelho","Azul"},
+                toggle("hud_gpu","GPU usage",true);
+                toggle("hud_cpu","CPU usage (game)",true);
+                slider("hud_size","HUD size",10,26,12);
+                slider("hud_opacity","Background opacity (%)",0,100,65);
+                toggle("touch_visible","On-screen controls",true);
+                choice("control_color","Control color",
+                    new String[]{"Olive green","Amber","White","Red","Blue"},
                     new String[]{"olive","amber","white","red","blue"},"olive");
-                slider("touch_opacity","Opacidade dos controles (%)",15,100,55);
+                slider("touch_opacity","Controls opacity (%)",15,100,55);
                 if(inGame) {
-                    action("Editar posição dos botões",actions::editControls);
-                    action("Restaurar posição dos botões",actions::resetControls);
+                    action("Edit button positions",actions::editControls);
+                    action("Reset button positions",actions::resetControls);
                 }
                 break;
             case "library":
-                heading("JOGO E DRIVERS");
-                action("Escolher pasta do jogo",actions::chooseGame);
-                action("Instalar por PKG",actions::installPkg);
-                action("Selecionar driver Vulkan",actions::selectDriver);
-                action("Importar driver ZIP ou SO",actions::importDriver);
+                heading("GAME AND DRIVERS");
+                action("Choose game folder",actions::chooseGame);
+                action("Install from PKG",actions::installPkg);
+                action("Select Vulkan driver",actions::selectDriver);
+                action("Import driver ZIP or SO",actions::importDriver);
                 break;
             case "saves":
-                heading("SAVES");
-                note("Feche o jogo antes de importar ou exportar saves.");
-                action("Exportar saves ZIP",actions::exportSaves);
-                action("Importar saves ZIP",actions::importSaves);
+                heading("SAVE DATA");
+                note("Close the game before importing or exporting saves.");
+                action("Export save ZIP",actions::exportSaves);
+                action("Import save ZIP",actions::importSaves);
                 break;
             case "about":
                 content.addView(AboutPanel.create(activity,actions::logs,actions::exportLogs));

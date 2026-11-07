@@ -47,6 +47,7 @@
  * S.inflight.
  */
 #include "geometry.h"
+#include "frame_benchmark.h"
 #include <android/hardware_buffer.h>
 #include <android/log.h>
 #include <android/native_window.h>
@@ -68,6 +69,7 @@
 #include <sys/stat.h>
 #include <sys/un.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "gow3_present_proto.h"
 
@@ -120,6 +122,7 @@ static struct {
     void (*set_geometry)(ASurfaceTransaction*, ASurfaceControl*, const ARect*, const ARect*, int32_t);
     void (*set_visibility)(ASurfaceTransaction*, ASurfaceControl*, int8_t);
     void (*set_transparency)(ASurfaceTransaction*, ASurfaceControl*, int8_t);
+    void (*set_frame_rate)(ASurfaceTransaction*, ASurfaceControl*, float, int8_t); /* API 30, optional */
     void (*set_on_complete)(ASurfaceTransaction*, void*, void (*)(void*, ASurfaceTransactionStats*));
     void (*set_on_commit)(ASurfaceTransaction*, void*, void (*)(void*, ASurfaceTransactionStats*)); /* API 31, optional */
     int (*prev_release_fence)(ASurfaceTransactionStats*, ASurfaceControl*);
@@ -132,6 +135,7 @@ static void load_api(void) {
     void* lib = dlopen("libandroid.so", RTLD_NOW);
     if (!lib) return;
     *(void**)&api.set_on_commit = dlsym(lib, "ASurfaceTransaction_setOnCommit"); /* optional */
+    *(void**)&api.set_frame_rate = dlsym(lib, "ASurfaceTransaction_setFrameRate");
 #define SYM(field, name) if (!(*(void**)&api.field = dlsym(lib, name))) return
     SYM(create_from_window, "ASurfaceControl_createFromWindow");
     SYM(release, "ASurfaceControl_release");
@@ -161,6 +165,9 @@ static struct {
     pthread_mutex_t lock;
     int started;
     int fullscreen;
+    float target_fps;
+    int frame_rate_dirty;
+    TlouFrameBenchmark benchmark;
     int server_fd;
     char path[108];
     pthread_t thread;
@@ -183,6 +190,7 @@ static struct {
     uint32_t count;
     AHardwareBuffer* bufs[GOW3_PRESENT_MAX_BUFFERS];
     atomic_ullong frames;
+    atomic_ullong received, offscreen_dropped;
 } S = {.lock = PTHREAD_MUTEX_INITIALIZER, .server_fd = -1, .conn_fd = -1, .last_set = -1, .wake_fd = -1};
 
 /* ---- lock held for everything below unless noted ---- */
@@ -241,6 +249,7 @@ static void drop_surface_control(void) {
 static void make_surface_control(void) {
     if (!api.ok || !S.window || S.sc) return;
     S.sc = api.create_from_window(S.window, "gow3present");
+    S.frame_rate_dirty = 1;
     if (!S.sc) LOGE("ASurfaceControl_createFromWindow failed");
     else LOGI("surface control created");
 }
@@ -346,9 +355,18 @@ static void show_frame(uint32_t generation, uint32_t index, uint64_t frame, uint
     api.set_geometry(t, S.sc, &src, &dst, 0);
     api.set_transparency(t, S.sc, ASURFACE_TRANSACTION_TRANSPARENCY_OPAQUE);
     api.set_visibility(t, S.sc, ASURFACE_TRANSACTION_VISIBILITY_SHOW);
+    if (api.set_frame_rate && S.frame_rate_dirty) {
+        api.set_frame_rate(t, S.sc, S.target_fps, 1);
+        S.frame_rate_dirty = 0;
+    }
     api.set_on_complete(t, ctx, on_complete);
     if (commit) api.set_on_commit(t, commit, on_commit);
     api.txn_apply(t);
+    /* Count surface submissions, not frames discarded while backgrounded. */
+    atomic_fetch_add(&S.frames, 1);
+    struct timespec timestamp;
+    if (clock_gettime(CLOCK_MONOTONIC, &timestamp) == 0)
+        tlou_benchmark_frame(&S.benchmark, (uint64_t)timestamp.tv_sec*1000000000ull+timestamp.tv_nsec);
     api.txn_delete(t);
     S.last_set = (int)index;
     if (S.fifo) S.inflight = ctx->seq;
@@ -419,12 +437,13 @@ static void set_fifo(int fifo) {
 }
 
 static void present_frame(const gow3_present_msg* m, int acquire_fd) {
+    atomic_fetch_add(&S.received, 1);
     if (m->generation != S.generation || m->index >= S.count || !S.bufs[m->index]) {
         if (acquire_fd >= 0) close(acquire_fd);
         return; /* a frame of a set we do not have: nothing to show, nothing to release */
     }
-    atomic_fetch_add(&S.frames, 1);
     if (!S.sc || !api.ok) {
+        atomic_fetch_add(&S.offscreen_dropped, 1);
         /* No display now (surface lost, app paused): the frame is dropped; its own acquire fence
          * is the release (the game's writes are what the buffer still waits for). */
         send_release(m->generation, m->index, m->frame, acquire_fd);
@@ -650,6 +669,40 @@ JNIEXPORT void JNICALL Java_ro_cobrabm_fexdroid_Gow3Present_nativeSetSurface(JNI
 JNIEXPORT jlong JNICALL Java_ro_cobrabm_fexdroid_Gow3Present_nativeFrames(JNIEnv* env, jclass cls) {
     (void)env; (void)cls;
     return (jlong)atomic_load(&S.frames);
+}
+
+JNIEXPORT void JNICALL Java_ro_cobrabm_fexdroid_Gow3Present_nativeSetFrameRate(
+        JNIEnv* env, jclass cls, jfloat fps) {
+    (void)env; (void)cls;
+    pthread_mutex_lock(&S.lock);
+    float target = fps == 30.0f || fps == 60.0f ? fps : 0.0f;
+    S.target_fps = target; S.frame_rate_dirty = 1;
+    pthread_mutex_unlock(&S.lock);
+}
+
+JNIEXPORT jstring JNICALL Java_ro_cobrabm_fexdroid_Gow3Present_nativeStats(JNIEnv* env, jclass cls) {
+    (void)cls;
+    char text[640];
+    pthread_mutex_lock(&S.lock);
+    TlouFrameSummary summary = tlou_benchmark_summary(&S.benchmark);
+    snprintf(text, sizeof text,
+        "received=%llu submitted=%llu offscreen-dropped=%llu surface=%d fifo=%d queue=%u target=%.0f window=%dx%d "
+        "foreground=%d samples=%u submit-ms p50=%.2f p95=%.2f p99=%.2f worst=%.2f over-33.3ms=%u long-gaps=%u",
+        (unsigned long long)atomic_load(&S.received), (unsigned long long)atomic_load(&S.frames),
+        (unsigned long long)atomic_load(&S.offscreen_dropped), S.sc != NULL, S.fifo, S.queue_len,
+        S.target_fps, S.window ? ANativeWindow_getWidth(S.window) : 0,
+        S.window ? ANativeWindow_getHeight(S.window) : 0, S.benchmark.active, summary.count,
+        summary.p50, summary.p95, summary.p99, summary.worst, summary.over_33ms, summary.long_gaps);
+    pthread_mutex_unlock(&S.lock);
+    return (*env)->NewStringUTF(env, text);
+}
+
+JNIEXPORT void JNICALL Java_ro_cobrabm_fexdroid_Gow3Present_nativeSetActive(
+        JNIEnv* env, jclass cls, jboolean active) {
+    (void)env; (void)cls;
+    pthread_mutex_lock(&S.lock);
+    tlou_benchmark_active(&S.benchmark, active ? 1 : 0);
+    pthread_mutex_unlock(&S.lock);
 }
 
 JNIEXPORT void JNICALL Java_ro_cobrabm_fexdroid_Gow3Present_nativeShutdown(JNIEnv* env, jclass cls) {

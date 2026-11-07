@@ -17,6 +17,20 @@ final class PortSettings {
         return context.getSharedPreferences("tlou",Context.MODE_PRIVATE);
     }
 
+    static void setScale(Context context,int percent) {
+        RenderScale.units(percent);
+        prefs(context).edit().putBoolean("custom_scale",true).putInt("render_scale",percent)
+            .putString("resolution","original").putString("render_path","guest").apply();
+    }
+    static void migrateResolution(Context context) {
+        SharedPreferences p=prefs(context);
+        if(p.getBoolean("resolution_ui_v2",false))return;
+        String old=p.getString("resolution","720");
+        int percent=p.getBoolean("custom_scale",false)?scale(context):
+            "720".equals(old)?67:"540".equals(old)?50:"360".equals(old)?33:100;
+        setScale(context,percent);
+        p.edit().putBoolean("resolution_ui_v2",true).apply();
+    }
     // Existing player-selected game, driver, patch and resolution preferences survive upgrades.
     // Old experiment preferences cannot silently reactivate discarded modes.
     static void retireTestPreferences(Context context) {
@@ -27,7 +41,7 @@ final class PortSettings {
             "split_cs64","mapped_fault_readbacks","mapped_readbacks","gpu_profile",
             "prep_pool","cpu_trims","prefetch_pipelines","parallel_pipelines",
             "prep_workers","frames_ahead","descriptor_bulk","readback","sotc_precise_narrow",
-            "compute_wait_fast","relaxed_skinning_fp"}) edit.remove(key);
+            "compute_wait_fast","relaxed_skinning_fp","perf_diagnostics"}) edit.remove(key);
         String limit=prefs(context).getString("fps_limit","60");
         if(!"30".equals(limit) && !"60".equals(limit))edit.putString("fps_limit","60");
         edit.apply();
@@ -53,6 +67,7 @@ final class PortSettings {
         // SIGTERM on user exit; it is NOT evidence of a guest deadlock.
         // Preserve original wake predicates only for the confirmed Xiaomi SoC.
         options.put("job_sleep",!conservativeJobWorkers());
+        options.put("fixes",LaunchOverrides.saved(context).getOrDefault("TLOU_FIXES","default"));
         for(String key:EFFECTS) options.put(key,p.getBoolean(key,false));
         File file=new File(context.getFilesDir(),"patch-options.json");
         Files.write(file.toPath(),options.toString().getBytes(StandardCharsets.UTF_8));
@@ -207,9 +222,21 @@ final class PortSettings {
         setting(p,env,"perf_adpf","TLOU_ADPF",false);
         setting(p,env,"perf_stencil","GOW3_STENCIL_PLANE_COPY",false);
         env.put("GOW3_RAIN_SCALE",p.getBoolean("perf_rain",false)?"0.12":"1");
-        String diagnostic=p.getString("perf_diagnostics","normal");
-        env.put("TLOU_CPU_PHASE_SAMPLES","cpu".equals(diagnostic)?"1":"0");
-        if("gpu".equals(diagnostic))env.put("GOW3_GPU_PROFILE","1");
+        // One report path: bounded CPU/frame diagnostics are always available.
+        // Full GPU timestamp profiling remains off because it changes performance.
+        env.put("TLOU_CPU_PHASE_SAMPLES","1");
+        env.remove("GOW3_GPU_PROFILE");
+        String buffers=p.getString("perf_present_buffers","3");
+        env.put("GOW3_PRESENT_BUFFERS",buffers.matches("[234]")?buffers:"3");
+        String workers=p.getString("perf_draw_workers","0");
+        env.put("GOW3_PREP_WORKERS",workers.matches("[0124]")?workers:"0");
+        String turnip=p.getString("perf_turnip_profile","default");
+        env.remove("TU_AUTOTUNE_ALGO");env.remove("TU_AUTOTUNE_FLAGS");
+        if(turnip.equals("sysmem"))env.put("TU_AUTOTUNE_ALGO","prefer_sysmem");
+        else if(turnip.equals("gmem") || turnip.equals("gmem_small"))env.put("TU_AUTOTUNE_ALGO","prefer_gmem");
+        else if(turnip.equals("small"))env.put("TU_AUTOTUNE_ALGO","bandwidth");
+        if(turnip.equals("small") || turnip.equals("gmem_small"))env.put("TU_AUTOTUNE_FLAGS","tune_small");
+        LaunchOverrides.apply(context,env,false);
 
     }
 
@@ -222,8 +249,9 @@ final class PortSettings {
     }
 
     static String experimentReport(Context context,Map<String,String> env) {
-        StringBuilder result=new StringBuilder("TLOU launch settings: resolution=")
-            .append(prefs(context).getString("resolution","original"));
+        StringBuilder result=new StringBuilder("TLOU launch settings: internal=")
+            .append(prefs(context).getBoolean("custom_scale",false)?RenderScale.label(scale(context)):
+                prefs(context).getString("resolution","original"));
         result.append("; renderer=Vulkan; CPU=FEX ARM64");
         if(prefs(context).getBoolean("custom_scale",false))result.append("; render-scale=").append(RenderScale.label(scale(context)));
         result.append("; frame-overlap=").append(env.get("GOW3_FRAMES_IN_FLIGHT"));
@@ -253,12 +281,13 @@ final class PortSettings {
     }
 
     static String fpsLimit(Context context) {
-        return "30".equals(prefs(context).getString("fps_limit","60"))?"30":"60";
+        return "30".equals(LaunchOverrides.saved(context).getOrDefault("GOW3_FPS_LIMIT",prefs(context).getString("fps_limit","60")))?"30":"60";
     }
     static String summary(Context context) {
         SharedPreferences p=prefs(context);
         String r=p.getString("resolution","original"), limit=fpsLimit(context);
-        String res=r.equals("original")?"Original":r+"p";
+        String res=p.getBoolean("custom_scale",false)?RenderScale.label(scale(context)):
+            r.equals("original")?"Original":r+"p";
         return res+"  ·  "+(limit+" FPS")+"  ·  "+
             (p.getBoolean("vsync",true)?"VSync ON":"VSync OFF");
     }

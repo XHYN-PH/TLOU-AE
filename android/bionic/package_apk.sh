@@ -5,11 +5,11 @@ trap 'echo "TLOU APK packaging failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 cd "$(dirname "$0")/../.."
 root=$PWD
 out=$root/out/android-bionic
-case "${TLOU_APK_CHANNEL:-upstream}" in
+case "${TLOU_APK_CHANNEL:-test}" in
   test)
     test_build=true
     application_id=com.xhyn.tlou.ae.test
-    apk="$root/out/release/TLOU-AE-test-arm64.apk"
+    apk="$root/out/release/TLOU-AE-v0.2-arm64.apk"
     key="$out/ae-test-development.jks"
     ;;
   upstream)

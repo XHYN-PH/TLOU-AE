@@ -51,7 +51,7 @@ public class PerformanceSettingsTest {
         try(var controller=Robolectric.buildActivity(Activity.class).setup()){
             Activity a=controller.get();var p=PortSettings.prefs(a);
             p.edit().putString("perf_diagnostics","gpu").putString("game_path","private-player-path").putString("driver_name","Test driver").commit();
-            var env=new HashMap<String,String>();PortSettings.environment(a,env);assertEquals("1",env.get("GOW3_GPU_PROFILE"));
+            var env=new HashMap<String,String>();PortSettings.environment(a,env);assertFalse(env.containsKey("GOW3_GPU_PROFILE"));assertEquals("1",env.get("TLOU_CPU_PHASE_SAMPLES"));
             p.edit().putString("perf_diagnostics","normal").commit();PortSettings.environment(a,env);assertFalse(env.containsKey("GOW3_GPU_PROFILE"));
             RunLog.write(a,"test session");
             byte[] runtime=new byte[6*1024*1024];runtime[runtime.length-1]=123;

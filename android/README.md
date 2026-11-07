@@ -7,6 +7,10 @@ not validate these changes.
 User installation and compatibility: [English](../README.md) /
 [Português](../README.pt-BR.md). See [release notes](../RELEASE_NOTES.md).
 
+## TLOU-AE 0.2
+
+The app is branded **TLOU-AE**, author **XHYN_PH**. See [current refinement status](REFINEMENT_STATUS.md) and [testing instructions](TEST_APK.md). Full release lint is included in prebuild checks. The test-channel package/signing identity is retained for upgrades; new APK output is `out/release/TLOU-AE-v0.2-arm64.apk`.
+
 ## Android source
 
 This fork now includes the Android implementation in `android/`,
@@ -111,8 +115,8 @@ bash android/bionic/package_apk.sh
 
 For a development APK installed alongside the upstream app, use
 `TLOU_APK_CHANNEL=test bash android/bionic/package_apk.sh`. This produces
-`out/release/TLOU-AE-test-arm64.apk`, package `com.xhyn.tlou.ae.test`, labeled
-**TLOU AE Test**. It has separate app settings and private saves. Keep the
+`out/release/TLOU-AE-v0.2-arm64.apk`, package `com.xhyn.tlou.ae.test`, labeled
+**TLOU-AE**. It has separate app settings and private saves. Keep the
 existing installation; select the game folder again in the test app. Retain
 `out/android-bionic/ae-test-development.jks` privately for compatible future
 test updates. Never include the private key in a shared artifact.

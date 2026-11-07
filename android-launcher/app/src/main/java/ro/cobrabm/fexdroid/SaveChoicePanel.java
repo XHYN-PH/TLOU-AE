@@ -38,13 +38,13 @@ final class SaveChoicePanel extends Dialog {
         super(activity);this.buttonName=buttonName;this.activity=activity;this.request=request;this.selection=selection;selected=request.focus;
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         LinearLayout root=column();root.setPadding(dp(12),dp(8),dp(12),dp(8));root.setBackgroundColor(BG);
-        root.addView(text("THE LAST OF US REMASTERED",11,OLIVE));
+        root.addView(text("TLOU-AE",11,OLIVE));
         LinearLayout header=new LinearLayout(activity);header.setGravity(Gravity.CENTER_VERTICAL);
         TextView heading=text(title(),20,TEXT);heading.setTypeface(Typeface.create("sans-serif-condensed",Typeface.BOLD));
         header.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
         Button close=button("×",false,()->answer(-2));header.addView(close,new LinearLayout.LayoutParams(dp(38),dp(38)));root.addView(header);
         int existing=0;for(var entry:request.entries)if(!entry.isNew)existing++;
-        TextView count=text(tr("Salvamentos")+" · "+existing,12,MUTED);count.setPadding(0,dp(2),0,dp(4));root.addView(count);
+        TextView count=text(tr("Saves")+" · "+existing,12,MUTED);count.setPadding(0,dp(2),0,dp(4));root.addView(count);
         scroll=new ScrollView(activity);LinearLayout list=column();scroll.addView(list);
         cards=new LinearLayout[request.entries.length];
         for(int i=0;i<cards.length;i++){
@@ -54,11 +54,11 @@ final class SaveChoicePanel extends Dialog {
                 ImageView image=new ImageView(activity);image.setScaleType(ImageView.ScaleType.CENTER_CROP);image.setImageBitmap(thumbnails[i]);
                 card.addView(image,new LinearLayout.LayoutParams(dp(112),dp(62)));
             }else{
-                TextView missing=text(entry.isNew?tr("Novo save"):tr("Sem miniatura"),11,MUTED);missing.setGravity(Gravity.CENTER);missing.setBackgroundColor(0xff101813);
+                TextView missing=text(entry.isNew?tr("New save"):tr("No thumbnail"),11,MUTED);missing.setGravity(Gravity.CENTER);missing.setBackgroundColor(0xff101813);
                 card.addView(missing,new LinearLayout.LayoutParams(dp(112),dp(62)));
             }
             LinearLayout words=column();LinearLayout.LayoutParams wordsLp=new LinearLayout.LayoutParams(0,-1,1);wordsLp.leftMargin=dp(10);card.addView(words,wordsLp);
-            TextView name=text(entry.isNew?tr("Novo save"):entry.heading(),14,TEXT);
+            TextView name=text(entry.isNew?tr("New save"):entry.heading(),14,TEXT);
             name.setTypeface(null,Typeface.BOLD);name.setSingleLine(true);
             name.setEllipsize(android.text.TextUtils.TruncateAt.END);words.addView(name);
             String summary=!entry.detail.isEmpty()?entry.detail:
@@ -79,7 +79,7 @@ final class SaveChoicePanel extends Dialog {
         }
         root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         LinearLayout footer=new LinearLayout(activity);footer.setGravity(Gravity.RIGHT);footer.setPadding(0,dp(5),0,0);
-        footer.addView(button(tr("Cancelar"),false,()->answer(-2)),new LinearLayout.LayoutParams(dp(120),dp(42)));
+        footer.addView(button(tr("Cancel"),false,()->answer(-2)),new LinearLayout.LayoutParams(dp(120),dp(42)));
         LinearLayout.LayoutParams actionLp=new LinearLayout.LayoutParams(dp(140),dp(42));actionLp.leftMargin=dp(10);
         footer.addView(button(action(),true,()->answer(selected)),actionLp);root.addView(footer);
         root.setFocusableInTouchMode(true);root.requestFocus();
@@ -115,13 +115,13 @@ final class SaveChoicePanel extends Dialog {
     }
     private int dp(int n){return Math.round(n*activity.getResources().getDisplayMetrics().density);}
     private String tr(String value){return TlouLanguage.t(activity,value);}
-    private LinearLayout column(){LinearLayout l=new LinearLayout(activity);l.setOrientation(1);return l;}
+    private LinearLayout column(){LinearLayout l=new LinearLayout(activity);l.setOrientation(LinearLayout.VERTICAL);return l;}
     private TextView text(String value,int size,int color){TextView t=new TextView(activity);t.setText(value);t.setTextSize(size);t.setTextColor(color);return t;}
     private Button button(String value,boolean primary,Runnable action){Button b=new Button(activity);b.setFocusable(false);b.setAllCaps(false);b.setText(value);b.setTextColor(primary?BG:TEXT);b.setBackgroundTintList(android.content.res.ColorStateList.valueOf(primary?OLIVE:0xff303c33));b.setOnClickListener(v->action.run());return b;}
-    private String title(){switch(request.title){case "Load game":return tr("Carregar jogo");case "Save game":return tr("Salvar jogo");case "Delete save":return tr("Excluir save");default:return request.title;}}
-    private String action(){switch(request.title){case "Load game":return tr("Carregar");case "Save game":return tr("Salvar");case "Delete save":return tr("Excluir");default:return tr("Selecionar");}}
+    private String title(){switch(request.title){case "Load game":return tr("Load game");case "Save game":return tr("Save game");case "Delete save":return tr("Delete save");default:return request.title;}}
+    private String action(){switch(request.title){case "Load game":return tr("Load");case "Save game":return tr("Save");case "Delete save":return tr("Delete");default:return tr("Select");}}
     private String date(long seconds){
-        if(seconds<=0 || seconds>Long.MAX_VALUE/1000)return tr("Data indisponível");
+        if(seconds<=0 || seconds>Long.MAX_VALUE/1000)return tr("Date unavailable");
         Locale locale=Locale.forLanguageTag(TlouLanguage.CODES[TlouLanguage.index(activity)]);
         return DateFormat.getDateTimeInstance(DateFormat.MEDIUM,DateFormat.SHORT,locale).format(new Date(seconds*1000));
     }

@@ -18,14 +18,14 @@ final class RunLog {
     static void requestExport(Activity activity) {
         Intent save=new Intent(Intent.ACTION_CREATE_DOCUMENT);
         save.setType("application/zip");save.addCategory(Intent.CATEGORY_OPENABLE);
-        save.putExtra(Intent.EXTRA_TITLE,"TLOU-Android-Logs.zip");
+        save.putExtra(Intent.EXTRA_TITLE,"TLOU-AE-Logs.zip");
         activity.startActivityForResult(save,EXPORT_REQUEST);
     }
     static File launch(Context c) { return new File(c.getFilesDir(),"launch.log"); }
     static synchronized void begin(Context c) {
         File current=launch(c), previous=new File(c.getFilesDir(),"launch-previous.log");
         if(current.exists()) { previous.delete(); current.renameTo(previous); }
-        write(c,"JOGAR • "+new Date()+" • Android "+Build.VERSION.RELEASE+" / API "+Build.VERSION.SDK_INT+" • "+Build.MANUFACTURER+" "+Build.MODEL);
+        write(c,"PLAY • "+new Date()+" • Android "+Build.VERSION.RELEASE+" / API "+Build.VERSION.SDK_INT+" • "+Build.MANUFACTURER+" "+Build.MODEL);
     }
     static synchronized void write(Context c,String message) {
         try(FileOutputStream out=new FileOutputStream(launch(c),true)) {
@@ -39,18 +39,53 @@ final class RunLog {
     }
     static File runtime(Context c) { return new File(c.getFilesDir(),"tlou/runtime.log"); }
     static String tail(File file,int bytes) {
-        if(!file.isFile())return "Ainda não criado.";
+        if(!file.isFile())return "Not created yet.";
         try(RandomAccessFile in=new RandomAccessFile(file,"r")) {
-            in.seek(Math.max(0,in.length()-bytes)); byte[] data=new byte[(int)(in.length()-in.getFilePointer())];in.readFully(data);return new String(data,StandardCharsets.UTF_8);
+            long end=in.length();in.seek(Math.max(0,end-bytes));byte[] data=new byte[(int)(end-in.getFilePointer())];
+            int read=0,n;while(read<data.length && (n=in.read(data,read,data.length-read))>0)read+=n;
+            return new String(data,0,read,StandardCharsets.UTF_8);
         }catch(IOException e){return e.toString();}
     }
+    static void captureActive(Context c,File prepared,java.util.Map<String,String> env) throws Exception {
+        org.json.JSONObject active=new org.json.JSONObject();
+        active.put("app","TLOU-AE");active.put("author","XHYN_PH");active.put("captured_at",new Date().toString());
+        active.put("next_launch_changes_require_restart",true);
+        active.put("render_scale",PortSettings.scale(c));active.put("driver",PortSettings.prefs(c).getString("driver_name","System"));
+        active.put("overrides",new org.json.JSONObject(LaunchOverrides.report(c)));
+        org.json.JSONObject effective=new org.json.JSONObject();
+        for(String key:new String[]{"GOW3_FPS_LIMIT","GOW3_VSYNC","GOW3_FRAMES_IN_FLIGHT","GOW3_SKIP_IB_DRAIN","GOW3_PRESENT_BUFFERS","GOW3_PREP_WORKERS","GOW3_READBACKS","TLOU_EXPECT_SCENE_SIZE","TLOU_CPU_PHASE_SAMPLES","TLOU_MOBILE_MEMORY_POLICY","TLOU_ADPF","TU_AUTOTUNE_ALGO","TU_AUTOTUNE_FLAGS"})if(env.containsKey(key))effective.put(key,env.get(key));
+        active.put("effective",effective);
+        File validation=new File(prepared,"patch-validation.json");
+        if(validation.isFile())active.put("validated_patches",new org.json.JSONObject(new String(java.nio.file.Files.readAllBytes(validation.toPath()),StandardCharsets.UTF_8)));
+        File target=new File(c.getFilesDir(),"tlou/active-settings.json");java.nio.file.Files.createDirectories(target.getParentFile().toPath());
+        File temp=new File(target.getPath()+".new");java.nio.file.Files.write(temp.toPath(),active.toString(2).getBytes(StandardCharsets.UTF_8));
+        java.nio.file.Files.move(temp.toPath(),target.toPath(),java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+    }
+    private static void entry(ZipOutputStream zip,String name,String value) throws IOException{
+        zip.putNextEntry(new ZipEntry(name));zip.write(value.getBytes(StandardCharsets.UTF_8));zip.closeEntry();
+    }
     static String summary(Context c) {
-        return "INICIALIZAÇÃO\n"+tail(launch(c),10000)+"\n\nRUNTIME\n"+tail(runtime(c),10000)+
-            "\n\nINSTALAÇÃO / PREPARAÇÃO\n"+tail(new File(c.getFilesDir(),"installation.log"),5000);
+        return "STARTUP\n"+tail(launch(c),10000)+"\n\nRUNTIME\n"+tail(runtime(c),10000)+
+            "\n\nINSTALLATION / PREPARATION\n"+tail(new File(c.getFilesDir(),"installation.log"),5000);
+    }
+    private static String exitReason(int reason){
+        switch(reason){
+            case ApplicationExitInfo.REASON_LOW_MEMORY:return "LOW_MEMORY";
+            case ApplicationExitInfo.REASON_CRASH_NATIVE:return "NATIVE_CRASH";
+            case ApplicationExitInfo.REASON_CRASH:return "JAVA_CRASH";
+            case ApplicationExitInfo.REASON_ANR:return "APP_NOT_RESPONDING";
+            case ApplicationExitInfo.REASON_USER_REQUESTED:return "USER_OR_SYSTEM_CLEANER_STOP";
+            case ApplicationExitInfo.REASON_EXIT_SELF:return "SELF_EXIT";
+            case ApplicationExitInfo.REASON_SIGNALED:return "SIGNAL";
+            default:return "OTHER";
+        }
     }
     static void export(Context c,OutputStream output) throws IOException {
         try(ZipOutputStream zip=new ZipOutputStream(output)) {
-            for(String path:new String[]{"launch.log","launch-previous.log","tlou/runtime.log","tlou/runtime-previous.log","installation.log","tlou-prepared/device-ready.json","tlou/perf-cs-22e6e19e.bin","tlou/perf-cs-61d67259.bin"}) {
+            entry(zip,"READ-ME.txt","TLOU-AE diagnostic report · XHYN_PH\nCurrent and previous sessions are included. active-settings.json records the running session; performance-settings.json records choices for the next launch.\nDevice samples and display events are in launch.log. Presentation interval percentiles measure surface submissions, not GPU execution time. Long gaps remain counted; they are not automatically classified as loading. Background intervals are excluded.\n");
+            entry(zip,"device-state.txt",DiagnosticState.snapshot(c));
+            entry(zip,"cache-state.txt",CacheTools.describe(c));
+            for(String path:new String[]{"launch.log","launch-previous.log","tlou/runtime.log","tlou/runtime-previous.log","installation.log","tlou-prepared/device-ready.json","tlou-prepared/patch-validation.json","tlou/active-settings.json","tlou/perf-cs-22e6e19e.bin","tlou/perf-cs-61d67259.bin"}) {
                 File file=new File(c.getFilesDir(),path);if(!file.isFile())continue;
                 zip.putNextEntry(new ZipEntry(path));
                 try(RandomAccessFile in=new RandomAccessFile(file,"r")) {
@@ -86,12 +121,13 @@ final class RunLog {
                     try{settings.put(key,entry.getValue());}catch(org.json.JSONException e){throw new IOException(e);}
                 }
             }
+            try{settings.put("launch_overrides",new org.json.JSONObject(LaunchOverrides.report(c)));}catch(org.json.JSONException | IllegalArgumentException error){throw new IOException(error);}
             zip.write(settings.toString().getBytes(StandardCharsets.UTF_8));zip.closeEntry();
             zip.putNextEntry(new ZipEntry("android-process-exits.txt"));
             try {
                 ActivityManager manager=(ActivityManager)c.getSystemService(Context.ACTIVITY_SERVICE);
                 if(manager!=null)for(ApplicationExitInfo exit:manager.getHistoricalProcessExitReasons(c.getPackageName(),0,5)) {
-                    String line=new Date(exit.getTimestamp())+" process="+exit.getProcessName()+" reason="+exit.getReason()+" status="+exit.getStatus()+" description="+exit.getDescription()+"\n";
+                    String line=new Date(exit.getTimestamp())+" process="+exit.getProcessName()+" reason="+exitReason(exit.getReason())+" ("+exit.getReason()+")"+" status="+exit.getStatus()+" description="+exit.getDescription()+"\n";
                     zip.write(line.getBytes(StandardCharsets.UTF_8));
                 }
             } catch(RuntimeException e) { zip.write(e.toString().getBytes(StandardCharsets.UTF_8)); }

@@ -65,7 +65,7 @@ public class GameSetupDialogTest {
             env.put("TLOU_CPU_PHASE_SAMPLES","1");env.put("GOW3_GPU_PROFILE","1");
             env.put("GOW3_FRAME_STATS","1");env.put("GOW3_PERF_DIAG","1");
             PortSettings.environment(activity,env);
-            assertEquals("0",env.get("TLOU_CPU_PHASE_SAMPLES"));
+            assertEquals("1",env.get("TLOU_CPU_PHASE_SAMPLES"));
             PortSettings.prefs(activity).edit().putString("perf_diagnostics","cpu").commit();
             PortSettings.environment(activity,env);
             // The explicit CPU mode retains the bounded phase sampler, without

@@ -1,0 +1,48 @@
+{
+  "app": "TLOU-AE",
+  "author": "XHYN_PH",
+  "version": "0.2-ae-test",
+  "version_code": 39,
+  "package": "com.xhyn.tlou.ae.test",
+  "apk": "TLOU-AE-v0.2-arm64.apk",
+  "bytes": 45032888,
+  "sha256": "d33843fed94b679e9430e89928bb3c0388a777eb78e522bd9d01aba7f0e2a3b2",
+  "certificate_sha256": "85bcb03b1c49c34a66b34eb128965a262cb31513406b9f58675c8d3c5d83079c",
+  "update_identity_matches_previous_apk": true,
+  "native_payload_matches_build": true,
+  "preparation_scripts_match_checkout": true,
+  "native_16k_alignment": "passed",
+  "signature_zip_identity": "passed",
+  "feature_classes_branding_and_exclusions": "passed",
+  "prebuild": {
+    "python": 43,
+    "java": 26,
+    "full_release_lint_errors": 0,
+    "native_contracts": "passed",
+    "sanitizer_bounds": "passed"
+  },
+  "postbuild": {
+    "java": {
+      "tests": 26,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "payload_dependency_jni": "passed",
+    "benchmark_asan_ubsan": "passed",
+    "api30_fifo_regression": "fixed and tested before final package"
+  },
+  "native_rebuilt": [
+    "GPU with LTO",
+    "runtime",
+    "presenter"
+  ],
+  "fex_cpu": "unchanged verified NDK r29 local cache",
+  "pgo": "off",
+  "phone_fps_measured": false,
+  "excluded_items": [
+    6,
+    18
+  ],
+  "built_at_utc": "2026-11-07T17:27:39.590461+00:00"
+}

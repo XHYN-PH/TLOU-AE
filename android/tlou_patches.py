@@ -327,9 +327,9 @@ def unified_resolution_patches(changes, width, height):
         replacement = raw
         if at in GAME_UI_NATIVE_OVERRIDES:
             if raw != GAME_UI_NATIVE_OVERRIDES[at]:
-                raise ValueError("Patch UI/resolução fora do perfil CUSA00552 verificado")
+                raise ValueError("UI/resolution patch is outside the verified CUSA00552 profile")
             if raw.count("80070000") != 1 or raw.count("38040000") != 1:
-                raise ValueError("Constantes de viewport da UI não reconhecidas")
+                raise ValueError("Unrecognized UI viewport constants")
             replacement = raw.replace("80070000", scene_width).replace("38040000", scene_height)
             visited.add(at)
         elif at in POSTPROCESS_FULL_SITES or at in POSTPROCESS_HALF_SITES:
@@ -341,7 +341,7 @@ def unified_resolution_patches(changes, width, height):
             scaled = ("b9" + (scene_width if full else half_width) +
                       "41b8" + (scene_height if full else half_height))
             if raw.count(expected) != 1:
-                raise ValueError("Alocação de framebuffer full/half fora do perfil verificado")
+                raise ValueError("Full/half framebuffer allocation is outside the verified profile")
             replacement = raw.replace(expected, scaled)
             visited.add(at)
         elif at == AIM_NORMALIZATION_ADDRESS:
@@ -349,31 +349,31 @@ def unified_resolution_patches(changes, width, height):
             if (len(insn) < 18 or insn[0] != 0xBE or
                     insn[5:10] != bytes.fromhex("c5f96ec6ba") or
                     insn[14:18] != bytes.fromhex("c5f96eca")):
-                raise ValueError("Instruções de normalização da mira desconhecidas")
+                raise ValueError("Unrecognized aiming normalization instructions")
             y, x = struct.unpack_from("<f", insn, 1)[0], struct.unpack_from("<f", insn, 10)[0]
             if abs(y - 1.0 / 1080.0) > 1e-9 or abs(x - 1.0 / 1920.0) > 1e-9:
-                raise ValueError("Constantes anteriores da mira são diferentes do esperado")
+                raise ValueError("Original aiming constants do not match the expected values")
             struct.pack_into("<f", insn, 1, 1.0 / height)
             struct.pack_into("<f", insn, 10, 1.0 / width)
             replacement = insn.hex()
             visited.add(at)
         if len(replacement) != len(raw):
-            raise ValueError("Tamanho do patch de resolução modificado")
+            raise ValueError("Resolution patch size mismatch")
         patches.append((at, original, replacement))
     required = {*GAME_UI_NATIVE_OVERRIDES, *POSTPROCESS_FULL_SITES,
                 *POSTPROCESS_HALF_SITES, AIM_NORMALIZATION_ADDRESS}
     if visited != required:
-        raise ValueError("Perfil de resolução unificada incompleto")
+        raise ValueError("Incomplete unified resolution profile")
     return patches
 
 
 def selected_options(options, profile="01.00"):
     options = options or {}
     if not isinstance(options, dict):
-        raise ValueError("Configuração de patches inválida")
+        raise ValueError("Invalid patch configuration")
     resolution = options.get("resolution", "original")
     if not isinstance(resolution, str) or resolution not in {"original", "720", "540", "360"}:
-        raise ValueError("Resolução não suportada")
+        raise ValueError("Unsupported resolution")
     selected = {}
     scale = options.get("resolution_scale")
     if scale is not None:
@@ -386,18 +386,23 @@ def selected_options(options, profile="01.00"):
         if profile != "01.00":
             # 01.11 scene/UI/post-process/aim offsets are different. Guard
             # against accidentally applying the verified 01.00 layout.
-            raise ValueError("Patch de resolução 01.11 ainda não validado; selecione Original")
+            raise ValueError("Resolution patches for 01.11 are not validated; select Original")
         selected["resolution-" + resolution] = scene_aim_resolution_patches(resolution)
     effects = PERFORMANCE_EFFECTS if profile == "01.00" else PERFORMANCE_EFFECTS_111
     for name, changes in effects.items():
         if type(options.get(name, False)) is not bool:
-            raise ValueError("Opção de patch inválida: " + name)
+            raise ValueError("Invalid patch option: " + name)
         if options.get(name, False):
             selected["disable-" + name] = changes
     return selected
 
 
 def base_patches_for(options, profile="01.00"):
+    fixes = (options or {}).get("fixes", "default")
+    if fixes not in {"default", "none"}:
+        raise ValueError("Fixes must be default or none")
+    if fixes == "none":
+        return {}
     patches = dict(BASE_PATCHES if profile == "01.00" else BASE_PATCHES_111)
     # The 01.00 job-sleep patch forces three formerly conditional wake paths.
     # Snapdragon 7+ Gen 2 had a persistent job-counter deadlock while the
@@ -405,7 +410,7 @@ def base_patches_for(options, profile="01.00"):
     # on this device instead of globally disabling the job watchdog.
     job_sleep = (options or {}).get("job_sleep", True)
     if type(job_sleep) is not bool:
-        raise ValueError("Opção de workers inválida")
+        raise ValueError("Invalid worker option")
     if not job_sleep:
         patches.pop("job-sleep")
     return patches
@@ -419,7 +424,7 @@ def write_selected(source, prepared, options):
     prepared, source = Path(prepared), Path(source)
     game_self = prepared / "tlou-view/eboot.bin"
     if not game_self.is_file():
-        raise ValueError("Esta pasta preparada não contém eboot original")
+        raise ValueError("Prepared directory does not contain the original eboot")
     digest = hashlib.sha256(game_self.read_bytes()).hexdigest()
     profile = known_profile(digest)
     if profile is None:
@@ -427,12 +432,12 @@ def write_selected(source, prepared, options):
             (options or {}).get("resolution_scale", 100) != 100) or any(
             (options or {}).get(name, False) for name in PERFORMANCE_EFFECTS
         ):
-            raise ValueError("Eboot não reconhecido: patches exigem SHA-256 validado")
+            raise ValueError("Unrecognized eboot: patches require a validated SHA-256")
         # A prepared directory may be manually reused after replacing the game:
         # never leave a stale patches.bin from a different executable active.
         (prepared / "patches.bin").unlink(missing_ok=True)
         (prepared / "patch-validation.json").unlink(missing_ok=True)
-        print("Eboot sem perfil Android de patches conhecido; removidos patches antigos.", flush=True)
+        print("No known Android patch profile for this eboot; removed old patches.", flush=True)
         return
     requested = selected_options(options, profile)
     spec = importlib.util.spec_from_file_location("tlou_patch_writer", source / "tools/probe_tlou.py")
@@ -463,11 +468,17 @@ def write_selected(source, prepared, options):
     for name, changes in patches.items():
         for at, expected, _ in changes:
             if read(at, len(bytes.fromhex(expected))) != bytes.fromhex(expected):
-                raise ValueError("Assinatura divergente no patch " + name + " em " + hex(at))
+                raise ValueError("Patch signature mismatch: " + name + " em " + hex(at))
     temp = prepared / "patches.bin.new"
     module.image_patches(elf_path, temp, patches)
     temp.replace(prepared / "patches.bin")
+    scale = (options or {}).get("resolution_scale")
+    size = scale_dimensions(scale) if scale is not None else None
     report = {"profile": digest, "game_version": profile, "selected": list(requested),
-              "resolution": (options or {}).get("resolution", "original"), "validated": True}
+              "resolution": (options or {}).get("resolution", "original"),
+              "resolution_scale": scale, "scene_size": list(size) if size else None,
+              "fixes": (options or {}).get("fixes", "default"),
+              "patches_sha256": hashlib.sha256((prepared / "patches.bin").read_bytes()).hexdigest(),
+              "validated": True}
     (prepared / "patch-validation.json").write_text(json.dumps(report, indent=2)+"\n")
-    print("Patches validados: " + (", ".join(requested) or "Original; correções de estabilidade"), flush=True)
+    print("Validated patches: " + (", ".join(requested) or "Original; stability fixes"), flush=True)

@@ -15,25 +15,25 @@ final class GpuTurboSession {
         if(active || !PortSettings.prefs(context).getBoolean("gpu_turbo",false))return active;
         String gpu;
         try { gpu=BuiltinDrivers.renderer().toLowerCase(Locale.ROOT); }
-        catch(Throwable error) { RunLog.write(context,"Adreno Turbo: GPU não detectada"); return false; }
+        catch(Throwable error) { RunLog.write(context,"Adreno Turbo: GPU not detected"); return false; }
         if(!gpu.contains("adreno")) {
-            RunLog.write(context,"Adreno Turbo ignorado para GPU não-Adreno: "+gpu);
+            RunLog.write(context,"Adreno Turbo skipped for non-Adreno GPU: "+gpu);
             return false;
         }
         try {
             active=Gow3Present.adrenoTurbo(true);
-            RunLog.write(context,active?"Adreno Turbo ativado sem root (KGSL PWRCTRL)":
-                "Adreno Turbo indisponível: ioctl KGSL recusado; jogo continua normalmente");
+            RunLog.write(context,active?"Adreno Turbo enabled without root (KGSL PWRCTRL)":
+                "Adreno Turbo unavailable: KGSL ioctl rejected; game continues normally");
         } catch(Throwable error) {
-            active=false;RunLog.write(context,"Adreno Turbo não ativado: "+error);
+            active=false;RunLog.write(context,"Adreno Turbo not enabled: "+error);
         }
         return active;
     }
     synchronized void stop(Context context) {
         if(!active)return;
         boolean restored=Gow3Present.adrenoTurbo(false);
-        RunLog.write(context,restored?"Adreno Turbo desativado; escala dinâmica normal restaurada":
-            "Aviso: não foi possível restaurar o estado KGSL; verifique o dispositivo");
+        RunLog.write(context,restored?"Adreno Turbo disabled; normal dynamic scaling restored":
+            "Could not restore the KGSL policy; check device state");
         active=false;
     }
     synchronized boolean isActive() {return active;}

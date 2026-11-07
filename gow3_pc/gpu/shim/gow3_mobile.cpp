@@ -48,15 +48,16 @@ std::uint64_t MemoryBudget(std::uint64_t driver_budget,std::uint64_t used) {
         while(std::fgets(line,sizeof(line),file))if(std::sscanf(line,"full avg10=%lf",&value)==1)psi=value;
         std::fclose(file);
     }
-    if(!current) {
-        const u64 reserve=1536*MiB;
-        ceiling=std::min(driver_budget,std::max(std::clamp(available>reserve?available-reserve:0,u64(1024*MiB),u64(4096*MiB)),used/4*5));
-        current=ceiling;
-    }
-    ceiling=std::min(ceiling,driver_budget);
+    // The launch-time budget can be small while assets/driver caches initialize.
+    // Re-evaluate the ceiling instead of permanently latching that first value.
+    const u64 previous=current;
+    // MemAvailable is additional headroom, not the entire process/GPU budget.
+    // Include current allocations and leave the system reserve available.
+    ceiling=Ceiling(driver_budget,used,available);
+    if(!current)current=ceiling;
     current=std::min(current,ceiling);
     const auto decision=Step(current,ceiling,used,available,swap_total,swap_free,psi,relaxed);
-    if(decision.bytes!=current)std::printf("TLOU RAM budget: %llu -> %llu MiB; available=%llu MiB\n",(unsigned long long)(current/MiB),(unsigned long long)(decision.bytes/MiB),(unsigned long long)(available/MiB));
+    if(decision.bytes!=previous)std::printf("TLOU RAM budget: %llu -> %llu MiB; available=%llu used=%llu driver=%llu MiB psi=%.2f\n",(unsigned long long)(previous/MiB),(unsigned long long)(decision.bytes/MiB),(unsigned long long)(available/MiB),(unsigned long long)(used/MiB),(unsigned long long)(driver_budget/MiB),psi);
     current=decision.bytes;short_memory.store(decision.short_memory,std::memory_order_relaxed);
     return current;
 }

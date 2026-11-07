@@ -47,13 +47,13 @@ def ensure(source, game, out, options=None):
             (out / "content.bin").is_file() and (out / "tlou-view").is_dir()):
         if options is not None:
             write_selected(source, out, options)
-        print("Jogo já preparado; arquivos verificados.", flush=True)
+        print("Game already prepared; files verified.", flush=True)
         return out
     out.parent.mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix=".prepare-", dir=out.parent))
     backup = out.with_name(out.name + ".previous")
     try:
-        print("Preparando executável, módulos e conteúdo do TLOU…", flush=True)
+        print("Preparing TLOU executable, modules and content…", flush=True)
         prepare(source, game, None, stage)
         if options is not None:
             write_selected(source, stage, options)
@@ -72,7 +72,7 @@ def ensure(source, game, out, options=None):
             raise
         if backup.exists():
             shutil.rmtree(backup)
-        print("Preparação concluída. Pronto para jogar.", flush=True)
+        print("Preparation complete. Ready to play.", flush=True)
         return out
     finally:
         if stage.exists():

@@ -17,6 +17,6 @@ g++ -std=c++20 -O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer \
 ASAN_OPTIONS=detect_leaks=0 "$temporary/fault-bounds-sanitized"
 : "${ANDROID_HOME:?Set ANDROID_HOME to SDK 35}"
 : "${JAVA_HOME:?Set JAVA_HOME to a complete JDK 17}"
-gradle -p android-launcher :app:testReleaseUnitTest :app:lintVitalRelease --no-daemon --max-workers=2
+gradle -p android-launcher -PtlouTestBuild=true :app:testReleaseUnitTest :app:lintRelease --no-daemon --max-workers=2
 git diff --check
 echo 'Prebuild checks completed; no APK assembled. Full native renderer compilation and device gameplay/FPS validation remain separate.'

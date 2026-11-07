@@ -64,7 +64,7 @@ public class SaveChoiceTest {
             int[] chosen={-99};SaveChoicePanel panel=new SaveChoicePanel(a,nativeRequest(),null,index->chosen[0]=index);panel.show();
             View root=panel.getWindow().getDecorView();String text=labels(root);
             assertTrue(text.contains("The Outskirts"));assertTrue(text.contains("Actual checkpoint"));assertTrue(text.contains("SAVE0001"));
-            assertTrue(text.contains("Bill's Town"));assertTrue(text.contains("Sem miniatura"));assertFalse(text.contains("Autossalvamento"));
+            assertTrue(text.contains("Bill's Town"));assertTrue(text.contains("No thumbnail"));assertFalse(text.contains("Autosave"));
             assertEquals(-99,chosen[0]);
             View card=find(root,"Bill's Town");assertNotNull(card);
             View cardContainer=(View)card.getParent().getParent();
@@ -72,7 +72,7 @@ public class SaveChoiceTest {
             assertTrue("Long press keeps full metadata available",cardContainer.performLongClick());
             assertTrue(panel.isShowing());
             cardContainer.performClick();
-            assertEquals(-99,chosen[0]);View load=find(root,"Carregar");assertTrue(load instanceof Button);load.performClick();
+            assertEquals(-99,chosen[0]);View load=find(root,"Load");assertTrue(load instanceof Button);load.performClick();
             assertEquals(1,chosen[0]);assertFalse(panel.isShowing());
         }
     }

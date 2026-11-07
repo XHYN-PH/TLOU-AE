@@ -1,4 +1,6 @@
-# Performance implementation and test APK status
+# Historical 0.1 implementation and test APK status
+
+For the current 0.2 work, see [refinement status](REFINEMENT_STATUS.md).
 
 Development work requested for Snapdragon 8 Gen 3 / Adreno 750. An ARM64 test
 APK was built, signed and verified on 2026-11-07. This is not a 60 FPS result;

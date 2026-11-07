@@ -79,7 +79,7 @@ grep -Fq 'POSTPROCESS_FULL_SITES' android/tlou_patches.py
 grep -Fq 'POSTPROCESS_HALF_SITES' android/tlou_patches.py
 grep -Fq 'half_width = struct.pack("<I", width // 2).hex()' android/tlou_patches.py
 grep -Fq 'half_height = struct.pack("<I", height // 2).hex()' android/tlou_patches.py
-grep -Fq 'Perfil de resolução unificada incompleto' android/tlou_patches.py
+grep -Fq 'Incomplete unified resolution profile' android/tlou_patches.py
 grep -Fq '0x92EF1A, 0x92EFC0' android/tlou_patches.py
 grep -Fq '0x92EF7D, 0x92F00D' android/tlou_patches.py
 grep -Fq 'env.put("TLOU_EXPECT_SCENE_SIZE",actualSize);' android-launcher/app/src/main/java/ro/cobrabm/fexdroid/PortSettings.java
@@ -210,3 +210,6 @@ for test in fault_limits mobile_policy; do
 done
 g++ -std=c++20 -O2 -UNDEBUG -Wall -Wextra -Werror -I gow3_pc/gpu/shadps4 gow3_pc/tests/test_gc_cleanup.cpp -o "$test_dir/gc-cleanup"
 "$test_dir/gc-cleanup"
+
+cc -std=c11 -O2 -Wall -Wextra -Werror gow3_pc/tests/test_frame_benchmark.c -o "$test_dir/frame-benchmark"
+"$test_dir/frame-benchmark"

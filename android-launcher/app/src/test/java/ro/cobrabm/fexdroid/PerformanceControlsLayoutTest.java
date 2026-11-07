@@ -32,14 +32,16 @@ public class PerformanceControlsLayoutTest {
             Activity a=controller.get();LinearLayout root=new LinearLayout(a);root.setOrientation(LinearLayout.VERTICAL);
             root.setPadding(16,16,16,16);root.setBackgroundColor(0xff10161a);
             PerformanceControls.resolution(a,root,()->{});PerformanceControls.advanced(a,root,()->{});
-            Switch enabled=null;SeekBar scale=null;
+            SeekBar scale=null;
             for(int i=0;i<root.getChildCount();i++){
                 View child=root.getChildAt(i);
-                if(child instanceof Switch && enabled==null)enabled=(Switch)child;
                 if(child instanceof SeekBar)scale=(SeekBar)child;
             }
-            assertNotNull(enabled);assertNotNull(scale);assertEquals(90,scale.getMax());
-            enabled.performClick();assertTrue(PortSettings.prefs(a).getBoolean("custom_scale",false));
+            assertNotNull(scale);assertEquals(90,scale.getMax());
+            find(root,"50%").performClick();assertEquals(50,PortSettings.scale(a));
+            assertTrue(PortSettings.prefs(a).getBoolean("custom_scale",false));
+            assertNull(find(root,"Apply stable 30 FPS setup"));
+            assertNotNull(find(root,"Save launch variables"));
             View warm=find(root,"Keep recently used textures warm");assertNotNull(warm);warm.performClick();
             assertTrue(PortSettings.prefs(a).getBoolean("perf_warm_textures",false));
             find(root,"Reset advanced performance settings").performClick();

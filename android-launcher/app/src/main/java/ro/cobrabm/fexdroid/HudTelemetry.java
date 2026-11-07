@@ -42,6 +42,7 @@ final class HudTelemetry {
     private final java.util.concurrent.atomic.AtomicBoolean pending=new java.util.concurrent.atomic.AtomicBoolean();
     private volatile boolean closed;
     private long requestedAt;
+    private long diagnosticAt;
     void requestSample(Process process,long now) {
         if(closed || now-requestedAt<1_000_000_000L || !pending.compareAndSet(false,true))return;
         requestedAt=now;
@@ -94,7 +95,7 @@ final class HudTelemetry {
     private static long processTicks(int pid) throws Exception {
         try(BufferedReader reader=new BufferedReader(new FileReader("/proc/"+pid+"/stat"))) {
             String line=reader.readLine();
-            if(line==null)throw new IllegalStateException("Sem estatísticas de CPU");
+            if(line==null)throw new IllegalStateException("CPU statistics unavailable");
             int end=line.lastIndexOf(')');
             if(end<0||end+2>=line.length())throw new IllegalArgumentException("Formato de /proc/stat");
             String[] fields=line.substring(end+2).trim().split("\\s+");
@@ -105,6 +106,7 @@ final class HudTelemetry {
     void sample(int pid,long nowNanos) {
         if(resetPending.getAndSet(false) || sampledPid!=pid){previousTicks=-1;previousAt=0;sampledPid=pid;}
         sampleGpu();
+        if(nowNanos-diagnosticAt>=10_000_000_000L){diagnosticAt=nowNanos;RunLog.write(context,"Device sample: "+DiagnosticState.snapshot(context));}
         if(pid<=0){cpuPercent=Double.NaN;memoryGiB=Double.NaN;return;}
         try {
             long ticks=processTicks(pid);
@@ -112,8 +114,8 @@ final class HudTelemetry {
                 cpuPercent=(ticks-previousTicks)*100.0*1_000_000_000.0/
                     (ticksPerSecond*(nowNanos-previousAt)); // percent of one CPU core
             previousTicks=ticks;previousAt=nowNanos;
-            cpuSource("active:"+pid,"HUD CPU: processo "+pid+", contadores do kernel, "+ticksPerSecond+" ticks/s");
-        }catch(Exception e){cpuPercent=Double.NaN;previousTicks=-1;previousAt=0;cpuSource("unavailable:"+pid,"HUD CPU indisponível: "+e);}
+            cpuSource("active:"+pid,"HUD CPU: process "+pid+", kernel counters, "+ticksPerSecond+" ticks/s");
+        }catch(Exception e){cpuPercent=Double.NaN;previousTicks=-1;previousAt=0;cpuSource("unavailable:"+pid,"HUD CPU unavailable: "+e);}
         try(BufferedReader reader=new BufferedReader(new FileReader("/proc/"+pid+"/status"))) {
             String line;
             while((line=reader.readLine())!=null)if(line.startsWith("VmRSS:")) {

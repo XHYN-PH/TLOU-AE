@@ -18,26 +18,27 @@ final class InstallTools {
         File ready=new File(root,".ready");
         if (ready.isFile() && new String(Files.readAllBytes(ready.toPath()),java.nio.charset.StandardCharsets.UTF_8).equals(version)) return;
         delete(root);
-        if (!root.mkdirs()) throw new IOException("Não foi possível instalar as ferramentas");
+        if (!root.mkdirs()) throw new IOException("Cannot install preparation tools");
         try (ZipInputStream zip=new ZipInputStream(context.getAssets().open("tools.zip"))) {
             ZipEntry entry;
             while ((entry=zip.getNextEntry())!=null) {
                 File file=new File(root,entry.getName()).getCanonicalFile();
-                if (!file.toPath().startsWith(root.getCanonicalFile().toPath())) throw new IOException("Caminho inválido no pacote");
+                if (!file.toPath().startsWith(root.getCanonicalFile().toPath())) throw new IOException("Invalid archive path");
                 if (entry.isDirectory()) { file.mkdirs(); continue; }
                 File parent=file.getParentFile();
-                if (parent==null || (!parent.isDirectory()&&!parent.mkdirs())) throw new IOException("Falha ao criar pasta");
+                if (parent==null || (!parent.isDirectory()&&!parent.mkdirs())) throw new IOException("Cannot create directory");
                 try (OutputStream out=new FileOutputStream(file)) { byte[] buffer=new byte[65536]; int count; while((count=zip.read(buffer))!=-1) out.write(buffer,0,count); }
             }
         }
         for (String name:new String[]{"python/bin/python3.13","bin/orbis-pkg-util"})
-            if (!new File(root,name).setExecutable(true,true)) throw new IOException("Falha ao ativar "+name);
+            if (!new File(root,name).setExecutable(true,true)) throw new IOException("Cannot make executable: "+name);
         Files.write(ready.toPath(),version.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     private String run(List<String> args, Consumer<String> progress) throws Exception {
         ProcessBuilder builder=new ProcessBuilder(args).directory(root).redirectErrorStream(true);
         Map<String,String> env=builder.environment();
+        LaunchOverrides.apply(context,env,true);
         env.put("LD_LIBRARY_PATH",context.getApplicationInfo().nativeLibraryDir+":"+new File(root,"python/lib"));
         env.put("PYTHONHOME",new File(root,"python").getAbsolutePath());
         env.put("PYTHONUTF8","1"); env.put("PYTHONUNBUFFERED","1");
@@ -56,7 +57,7 @@ final class InstallTools {
             }
         }
         int code=process.waitFor();
-        if (code!=0) throw new IOException("A operação falhou ("+code+").\n"+tail);
+        if (code!=0) throw new IOException("Operation failed ("+code+").\n"+tail);
         return tail.toString();
     }
 
@@ -67,7 +68,7 @@ final class InstallTools {
             new File(root,"source/android/device_prepare.py").getAbsolutePath(),
             "--game",game.getCanonicalPath(),"--out",out.getAbsolutePath(),
             "--options",PortSettings.patchOptions(context).getAbsolutePath()),progress);
-        if (!prepared(out)) throw new IOException("Preparação incompleta; consulte o log de instalação");
+        if (!prepared(out)) throw new IOException("Preparation incomplete; create a diagnostic report");
         return out;
     }
 
@@ -82,26 +83,26 @@ final class InstallTools {
     File extract(File pkg, File parent, Consumer<String> progress) throws Exception {
         install();
         try (DataInputStream input=new DataInputStream(new FileInputStream(pkg))) {
-            if (input.readInt()!=0x7f434e54) throw new IOException("Selecione um PKG de PS4 válido");
+            if (input.readInt()!=0x7f434e54) throw new IOException("Select a valid PS4 PKG");
         }
         String helper=new File(root,"bin/orbis-pkg-util").getAbsolutePath();
-        progress.accept("Lendo informações do PKG…");
+        progress.accept("Reading PKG information…");
         String info=run(Arrays.asList(helper,"info",pkg.getCanonicalPath()),null);
         java.util.regex.Matcher title=java.util.regex.Pattern.compile("(?im)^\\s*Title ID:\\s*(CUSA[0-9]{5})\\s*$").matcher(info);
         if (!title.find())
-            throw new IOException("Não foi possível identificar o CUSA do PKG PS4");
+            throw new IOException("Cannot identify the PS4 PKG title ID");
         final String cusa=title.group(1);
         if (!Arrays.asList("CUSA00552","CUSA00556","CUSA00557","CUSA00559").contains(cusa))
-            throw new IOException("Título PS4 não suportado: "+cusa);
+            throw new IOException("Unsupported PS4 title: "+cusa);
         File destination=new File(parent,cusa).getCanonicalFile();
-        if (destination.exists()) throw new IOException("A pasta "+destination+" já existe. Se o jogo já está extraído, use Escolher pasta do jogo.");
-        if (pkg.getCanonicalFile().toPath().startsWith(destination.toPath())) throw new IOException("PKG dentro do destino");
-        if (!parent.canWrite() || !destination.mkdir()) throw new IOException("Sem acesso de escrita ao destino");
+        if (destination.exists()) throw new IOException("The directory "+destination+" already exists. If the game is extracted, use Choose game folder.");
+        if (pkg.getCanonicalFile().toPath().startsWith(destination.toPath())) throw new IOException("PKG is inside the destination directory");
+        if (!parent.canWrite() || !destination.mkdir()) throw new IOException("Destination directory is not writable");
         try {
-            progress.accept("Extraindo PKG para "+destination+"…");
+            progress.accept("Extracting PKG to "+destination+"…");
             run(Arrays.asList(helper,"extract",pkg.getCanonicalPath(),"--output",destination.getAbsolutePath(),"--quiet"),progress);
             if (!new File(destination,"eboot.bin").isFile() || !new File(destination,"sce_sys/param.sfo").isFile())
-                throw new IOException("PKG extraído sem eboot.bin ou param.sfo");
+                throw new IOException("Extracted PKG is missing eboot.bin or param.sfo");
             return destination;
         } catch (Exception failure) { delete(destination); throw failure; }
     }
