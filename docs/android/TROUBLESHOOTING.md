@@ -2,7 +2,7 @@
 
 ## Create one report
 
-Use **Create diagnostic report** in Settings, the game menu or About. Save the ZIP and share it in [Telegram](https://t.me/xhynports) or a [GitHub issue](https://github.com/XHYN-PH/TLOU-AE/issues).
+Use **Create diagnostic report** in Settings, the game menu or About. Save the ZIP and share it in [Telegram](https://t.me/xhynports).
 
 There is no separate debug launch or CPU/GPU logging mode to choose. The report includes current/previous logs, device evidence, applied patch information and the running configuration separately from settings saved for the next launch.
 

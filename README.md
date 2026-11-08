@@ -90,7 +90,7 @@ For BC textures, start with **Auto**. It retains native compressed sampling wher
 
 1. Reproduce the issue, then choose **Create diagnostic report** in Settings, the game menu or About.
 2. Save the single ZIP. No separate debug launch or CPU/GPU logging mode is required.
-3. Share it in [Telegram](https://t.me/xhynports) or [open an issue](https://github.com/XHYN-PH/TLOU-AE/issues).
+3. Share it in [Telegram](https://t.me/xhynports).
 
 Include your phone, Android version, game version, selected driver, settings and the scene or steps that triggered the issue. A screenshot or short video helps with visual problems. Review the ZIP before posting it publicly.
 
@@ -98,7 +98,7 @@ Shader compilation can cause first-visit stutter. Background/return FPS fluctuat
 
 ## Development and checks
 
-The current Android source is on [`android-0.1.1-ae`](https://github.com/XHYN-PH/TLOU-AE/tree/android-0.1.1-ae). See the [build guide](android/README.md), [release verification report](https://github.com/XHYN-PH/TLOU-AE/releases/download/v0.3-ae-test.1/BUILD_RESULT.json) and [integration status](android/REBASE_011_STATUS.md).
+The current Android source is on [`main`](https://github.com/XHYN-PH/TLOU-AE/tree/main); the release-development branch is [`android-0.1.1-ae`](https://github.com/XHYN-PH/TLOU-AE/tree/android-0.1.1-ae). See the [build guide](android/README.md), [release verification report](https://github.com/XHYN-PH/TLOU-AE/releases/download/v0.3-ae-test.1/BUILD_RESULT.json) and [integration status](android/REBASE_011_STATUS.md).
 
 Version 0.3 passed 68 Python tests, 40 Java tests, native/sanitizer checks, BC shader validation and signed APK/payload checks. These checks do not measure phone gameplay, sustained FPS or visual correctness.
 
