@@ -1,3 +1,5 @@
+> Historical upstream Portuguese documentation. Current TLOU-AE installation, features and releases are documented in the [English README](README.md).
+
 # The Last of Us Remastered — Daedalus Android
 
 Adaptação do **The Last of Us Remastered de PS4 para Android**, baseada no

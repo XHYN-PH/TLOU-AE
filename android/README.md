@@ -4,12 +4,11 @@
 performance controls. See the implementation status for this fork's actual
 build checks and outstanding phone validation; upstream gameplay results do
 not validate these changes.
-User installation and compatibility: [English](../README.md) /
-[Português](../README.pt-BR.md). See [release notes](../RELEASE_NOTES.md).
+User installation: [installation guide](../docs/android/INSTALL.md). See [troubleshooting](../docs/android/TROUBLESHOOTING.md) and [release notes](../RELEASE_NOTES.md).
 
 ## TLOU-AE 0.3
 
-The app is branded **TLOU-AE**, author **XHYN_PH**. The branch starts at upstream Android commit `7256020d485dabbd3a3250d1dd12506b23455c45`. See [0.1.1 integration status](REBASE_011_STATUS.md), [previous refinement status](REFINEMENT_STATUS.md) and [testing instructions](TEST_APK.md). Full release lint is included in prebuild checks. The test-channel package/signing identity is retained for upgrades; new APK output is `out/release/TLOU-AE-v0.3-arm64.apk`.
+**AE means Android Edition.** The app is branded **TLOU-AE**, author **XHYN_PH**. The branch starts at upstream Android commit `7256020d485dabbd3a3250d1dd12506b23455c45`. See [0.1.1 integration status](REBASE_011_STATUS.md), [previous refinement status](REFINEMENT_STATUS.md) and [testing instructions](TEST_APK.md). Full release lint is included in prebuild checks. The test-channel package/signing identity is retained for upgrades; new APK output is `out/release/TLOU-AE-v0.3-arm64.apk`.
 
 ## Android source
 
@@ -66,12 +65,11 @@ matching Android training build. No Android PGO gain has been measured yet.
 
 The [upstream Android source tree](https://github.com/erickmendes22/tlou-remastered-android/tree/tlou-ui-approval-log32-20261105)
 is retained as a reference. The historical Windows branch is not the Android
-APK implementation. The following clone example is for studying that reference;
-use this fork's existing checkout to retain the changes above.
+APK implementation. The following clone example checks out the current AE source. The upstream links are for comparison.
 
 ```sh
 git clone --recurse-submodules --branch android-0.1.1-ae https://github.com/XHYN-PH/TLOU-AE.git
-cd tlou-remastered-android
+cd TLOU-AE
 ```
 
 The existing branch name is a development identifier, not a user-facing setting.

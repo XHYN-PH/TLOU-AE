@@ -1,0 +1,45 @@
+name: Report a problem
+description: Report a startup, graphics, performance or controls problem in TLOU-AE.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use **Create diagnostic report** in Settings, the game menu or About to save one ZIP.
+        Review the report before posting it publicly. Do not attach game files.
+  - type: input
+    id: version
+    attributes:
+      label: TLOU-AE version
+      placeholder: 0.3-ae-test
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Phone, GPU and Android version
+      placeholder: Phone model, Adreno/Mali/Xclipse model, Android version
+    validations:
+      required: true
+  - type: input
+    id: game
+    attributes:
+      label: Game version and title ID
+      placeholder: "For example: 01.00 / CUSA00552"
+  - type: input
+    id: driver
+    attributes:
+      label: Vulkan driver
+      placeholder: System or exact imported/bundled driver version
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: What happened and how to reproduce it
+      description: Include the exact scene, steps, expected behavior and relevant settings. For resume issues, note when you switched away and returned.
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Diagnostic ZIP and visual evidence
+      description: Attach the ZIP saved by Create diagnostic report. Add screenshots or a short video for visual problems. If a report cannot be created, describe what prevents it.

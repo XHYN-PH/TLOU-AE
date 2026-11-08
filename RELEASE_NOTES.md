@@ -1,39 +1,22 @@
-# The Last of Us Remastered — Daedalus Android v0.1.1
+# TLOU-AE 0.3 — Android Edition
 
-## Português (Brasil)
+Maintained by **XHYN_PH**. Based directly on the verified Android **v0.1.1** source, with the previous AE changes and the new performance/compatibility work applied on top.
 
-Atualização do port Android baseado no projeto de PC de ravencaio.
+[Download and release assets](https://github.com/XHYN-PH/TLOU-AE/releases/tag/v0.3-ae-test.1) · [Full AE changelog](android/CHANGELOG_AE.md) · [Integration status](android/REBASE_011_STATUS.md)
 
-- Launcher e telas de informações agora exibem corretamente **v0.1.1**.
-- Novo ícone baseado na própria arte de The Last of Us Remastered / Android usada no launcher.
-- Visor de logs redesenhado no tema escuro/oliva, com rolagem, seleção de texto, **Copiar**, **Exportar ZIP** e **Fechar**.
-- Caixas de seleção, confirmação, mensagens e configuração inicial padronizadas com o tema do aplicativo.
-- Menu in-game simplificado, com um único controle de modo de exibição e HUD sem opções repetidas.
-- Workers de preparação de draws fixados novamente em **0** para todas as versões do jogo.
-- Melhor reconhecimento e persistência de atualizações de jogo a partir de PKG ou pasta.
-- Perfis e patches de resolução e gráficos para executáveis 01.00 e 01.11 conhecidos, respeitando validação por hash.
-- Importação/exportação de saves, controles físicos e na tela, drivers Turnip e interface em dez idiomas permanecem disponíveis.
+## Included in this testing release
 
-**Compatibilidade:** Android 11+, ARM64 e Vulkan. O jogo e seus arquivos não estão incluídos. O desempenho e a compatibilidade dependem do aparelho, do driver, do executável do jogo e da cena.
+- Unified English interface, AE branding and one diagnostic-report action.
+- One render-resolution control, with guarded 01.00 custom scaling and verified 01.11 presets.
+- Targeted readback protection, required-sequence copy waits, reduced profiler overhead and thread-memory cleanup.
+- Native Android performance hints, correlated foreground diagnostics and independent display-refresh choices.
+- Auto/Off/Force BC texture fallback, with native sampling retained where supported.
+- Updated pinned Turnip R2/V39 bundles and preserved custom driver choices.
+- Optional native-walker recovery, lazy EOP submission batching and reduced presentation buffers. These experiments default off.
+- Previous AE controls, launch variables, save/cache tools and compatible app-signing identity retained.
 
-Instale por cima de uma build compatível assinada com a mesma chave para manter dados e saves. Recomenda-se exportar os saves antes de desinstalar ou limpar dados.
+Pre/post-build validation passed 68 Python and 40 Java tests, native/sanitizer checks, BC shader validation and final signed APK/payload checks. GitHub source and loader checks passed. Gameplay, visual correctness, sustained FPS and the background/return transition still require target-phone testing.
 
-## English
+Install over the earlier compatible AE app without uninstalling. Use **Create diagnostic report** after reproducing a problem. See the [installation guide](docs/android/INSTALL.md) and [troubleshooting guide](docs/android/TROUBLESHOOTING.md).
 
-Update to the Android adaptation of ravencaio's PC port.
-
-- Fixed **v0.1.1** labeling in the launcher and About screen.
-- New launcher icon based on the built-in The Last of Us Remastered / Android hero artwork.
-- Redesigned olive/dark log viewer with scrolling, text selection, **Copy**, **Export ZIP**, and **Close**.
-- Consistent styled game setup, driver selection, confirmation, save detail, and error dialogs.
-- Simplified in-game display-mode options and removed duplicate HUD controls.
-- Restored **zero draw-preparation workers** across all game versions.
-- Improved persistence of installed game updates from PKG or extracted folder.
-- Recognized 01.00 and 01.11 executable profiles with hash-guarded graphics and resolution patches.
-- Retains save ZIP import/export, physical and touch controllers, Vulkan driver selection and ten app languages.
-
-**Requirements:** Android 11+, ARM64 and Vulkan. No game files are provided. Performance and compatibility vary across devices, drivers, game executables and scenes.
-
-Install over an earlier compatible APK signed with the same key to retain app data and saves. Back up saves before uninstalling or clearing app data.
-
-Earlier release: [v0.1](https://github.com/erickmendes22/tlou-remastered-android/releases/tag/v0.1-android-bionic).
+[Earlier AE changelogs](android/CHANGELOG_AE.md) · [Historical upstream 0.1.1 notes](docs/UPSTREAM_RELEASE_NOTES.md)
