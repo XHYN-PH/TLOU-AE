@@ -301,12 +301,12 @@ def scene_aim_resolution_patches_111(resolution):
         0x115FB9C: struct.pack("<ff", 1.0 / height, float(height)),
     }
     if replacements.keys() != RESOLUTION_111_GUARDS.keys():
-        raise ValueError("Perfil 01.11 de resolução incompleto")
+        raise ValueError("Incomplete 01.11 resolution profile")
     out = []
     for address, original in RESOLUTION_111_GUARDS.items():
         before, after = bytes.fromhex(original), replacements[address]
         if len(before) != len(after):
-            raise ValueError(f"01.11: tamanho inválido em {address:#x}")
+            raise ValueError(f"01.11: invalid size at {address:#x}")
         out.append((address, original, after.hex()))
     return out
 
@@ -324,18 +324,68 @@ POSTPROCESS_HALF_SITES = (0x92EF7D, 0x92F00D)
 def scene_aim_resolution_patches(resolution):
     """Guarded CUSA00552 1.00 scene/UI/post unified resolution profile."""
     width, height = LOW_RES_SCENE[resolution]
+    return unified_resolution_patches(PERFORMANCE_RESOLUTIONS[resolution], width, height)
+
+
+def scale_dimensions(percent):
+    """16:9 dimensions with integral half/quarter/eighth targets; never 0x0.
+
+    The verified presets all use units of 64x36. Keep that geometry instead
+    of inventing odd framebuffer/grid dimensions. Display the rounded size.
+    """
+    if type(percent) is not int or not 10 <= percent <= 100:
+        raise ValueError("Resolution scale must be an integer from 10 to 100")
+    units = (30 * percent + 50) // 100
+    return 64 * units, 36 * units
+
+
+def scaled_resolution_patches(percent):
+    width, height = scale_dimensions(percent)
+    # Only known immediate operands vary. Original signatures, instructions,
+    # branch displacements, movie buffers and fixed engine fields stay intact.
+    fields = {
+        0x910740: ((1, 1280, width), (6, 720, height), (64, 160, width // 8)),
+        0x9104F2: ((3, 1280, width), (8, 720, height)),
+        0x91ADBC: ((1, 1280, width), (10, 720, height)),
+    }
+    for at in (0x9103BB, 0x9103D0, 0x9103E5, 0x91042B,
+               0x910B22, 0x910B3E, 0x910B53, 0x910B99):
+        fields[at] = ((0, 1280, width),)
+    for at in (0x9103C2, 0x9103D7, 0x9103EC, 0x910432,
+               0x910B29, 0x910B45, 0x910B5A, 0x910BA0):
+        fields[at] = ((0, 720, height),)
+    for at in (0x910401, 0x910B6F):
+        fields[at] = ((0, 160, width // 8),)
+    for at in (0x910408, 0x910B76):
+        fields[at] = ((0, 180, height // 4),)
+    changes = []
+    visited = set()
+    for at, original, raw in PERFORMANCE_RESOLUTIONS['720']:
+        data = bytearray.fromhex(raw)
+        for offset, expected, value in fields.get(at, ()):
+            if struct.unpack_from('<I', data, offset)[0] != expected:
+                raise ValueError("Resolution template immediate changed")
+            struct.pack_into('<I', data, offset, value)
+            visited.add(at)
+        changes.append((at, original, data.hex()))
+    if visited != set(fields):
+        raise ValueError("Incomplete resolution template")
+    return unified_resolution_patches(changes, width, height)
+
+
+def unified_resolution_patches(changes, width, height):
     scene_width, scene_height = struct.pack("<I", width).hex(), struct.pack("<I", height).hex()
     half_width = struct.pack("<I", width // 2).hex()
     half_height = struct.pack("<I", height // 2).hex()
     patches = []
     visited = set()
-    for at, original, raw in PERFORMANCE_RESOLUTIONS[resolution]:
+    for at, original, raw in changes:
         replacement = raw
         if at in GAME_UI_NATIVE_OVERRIDES:
             if raw != GAME_UI_NATIVE_OVERRIDES[at]:
-                raise ValueError("Patch UI/resolução fora do perfil CUSA00552 verificado")
+                raise ValueError("UI/resolution patch is outside the verified CUSA00552 profile")
             if raw.count("80070000") != 1 or raw.count("38040000") != 1:
-                raise ValueError("Constantes de viewport da UI não reconhecidas")
+                raise ValueError("Unrecognized UI viewport constants")
             replacement = raw.replace("80070000", scene_width).replace("38040000", scene_height)
             visited.add(at)
         elif at in POSTPROCESS_FULL_SITES or at in POSTPROCESS_HALF_SITES:
@@ -347,7 +397,7 @@ def scene_aim_resolution_patches(resolution):
             scaled = ("b9" + (scene_width if full else half_width) +
                       "41b8" + (scene_height if full else half_height))
             if raw.count(expected) != 1:
-                raise ValueError("Alocação de framebuffer full/half fora do perfil verificado")
+                raise ValueError("Full/half framebuffer allocation is outside the verified profile")
             replacement = raw.replace(expected, scaled)
             visited.add(at)
         elif at == AIM_NORMALIZATION_ADDRESS:
@@ -355,49 +405,67 @@ def scene_aim_resolution_patches(resolution):
             if (len(insn) < 18 or insn[0] != 0xBE or
                     insn[5:10] != bytes.fromhex("c5f96ec6ba") or
                     insn[14:18] != bytes.fromhex("c5f96eca")):
-                raise ValueError("Instruções de normalização da mira desconhecidas")
+                raise ValueError("Unrecognized aiming normalization instructions")
             y, x = struct.unpack_from("<f", insn, 1)[0], struct.unpack_from("<f", insn, 10)[0]
             if abs(y - 1.0 / 1080.0) > 1e-9 or abs(x - 1.0 / 1920.0) > 1e-9:
-                raise ValueError("Constantes anteriores da mira são diferentes do esperado")
+                raise ValueError("Original aiming constants do not match the expected values")
             struct.pack_into("<f", insn, 1, 1.0 / height)
             struct.pack_into("<f", insn, 10, 1.0 / width)
             replacement = insn.hex()
             visited.add(at)
         if len(replacement) != len(raw):
-            raise ValueError("Tamanho do patch de resolução modificado")
+            raise ValueError("Resolution patch size mismatch")
         patches.append((at, original, replacement))
     required = {*GAME_UI_NATIVE_OVERRIDES, *POSTPROCESS_FULL_SITES,
                 *POSTPROCESS_HALF_SITES, AIM_NORMALIZATION_ADDRESS}
     if visited != required:
-        raise ValueError("Perfil de resolução unificada incompleto")
+        raise ValueError("Incomplete unified resolution profile")
     return patches
 
 
 def selected_options(options, profile="01.00", self_sha=None):
     options = options or {}
     if not isinstance(options, dict):
-        raise ValueError("Configuração de patches inválida")
+        raise ValueError("Invalid patch configuration")
     resolution = options.get("resolution", "original")
     if not isinstance(resolution, str) or resolution not in {"original", "720", "540", "360"}:
-        raise ValueError("Resolução não suportada")
+        raise ValueError("Unsupported resolution")
     selected = {}
-    if resolution != "original":
+    scale = options.get("resolution_scale")
+    if scale is not None:
+        dimensions = scale_dimensions(scale)
+        if scale != 100:
+            if profile == "01.00":
+                selected["resolution-scale-" + str(scale)] = scaled_resolution_patches(scale)
+            elif profile == "01.11" and self_sha in RESOLUTION_111_SELF_SHA256:
+                preset = next((key for key, size in LOW_RES_SCENE.items() if size == dimensions), None)
+                if preset is None:
+                    raise ValueError("Game 01.11 supports verified 33%, 50%, 67% or 100% presets only")
+                selected["resolution-" + preset] = scene_aim_resolution_patches_111(preset)
+            else:
+                raise ValueError("Reduced resolution requires a verified executable SHA-256")
+    elif resolution != "original":
         if profile == "01.00":
             selected["resolution-" + resolution] = scene_aim_resolution_patches(resolution)
         elif profile == "01.11" and self_sha in RESOLUTION_111_SELF_SHA256:
             selected["resolution-" + resolution] = scene_aim_resolution_patches_111(resolution)
         else:
-            raise ValueError("Patch de resolução 01.11 ainda não validado para este SHA-256")
+            raise ValueError("Resolution patches are not verified for this 01.11 executable")
     effects = PERFORMANCE_EFFECTS if profile == "01.00" else PERFORMANCE_EFFECTS_111
     for name, changes in effects.items():
         if type(options.get(name, False)) is not bool:
-            raise ValueError("Opção de patch inválida: " + name)
+            raise ValueError("Invalid patch option: " + name)
         if options.get(name, False):
             selected["disable-" + name] = changes
     return selected
 
 
 def base_patches_for(options, profile="01.00"):
+    fixes = (options or {}).get("fixes", "default")
+    if fixes not in {"default", "none"}:
+        raise ValueError("Fixes must be default or none")
+    if fixes == "none":
+        return {}
     patches = dict(BASE_PATCHES if profile == "01.00" else BASE_PATCHES_111)
     # The 01.00 job-sleep patch forces three formerly conditional wake paths.
     # Snapdragon 7+ Gen 2 had a persistent job-counter deadlock while the
@@ -405,7 +473,7 @@ def base_patches_for(options, profile="01.00"):
     # on this device instead of globally disabling the job watchdog.
     job_sleep = (options or {}).get("job_sleep", True)
     if type(job_sleep) is not bool:
-        raise ValueError("Opção de workers inválida")
+        raise ValueError("Invalid worker option")
     if not job_sleep:
         patches.pop("job-sleep")
     return patches
@@ -419,27 +487,27 @@ def write_selected(source, prepared, options):
     prepared, source = Path(prepared), Path(source)
     game_self = prepared / "tlou-view/eboot.bin"
     if not game_self.is_file():
-        raise ValueError("Esta pasta preparada não contém eboot original")
+        raise ValueError("Prepared directory does not contain the original eboot")
     digest = hashlib.sha256(game_self.read_bytes()).hexdigest()
     profile = known_profile(digest)
     if profile is None:
-        if (options or {}).get("resolution", "original") != "original" or any(
+        if ((options or {}).get("resolution", "original") != "original" or
+            (options or {}).get("resolution_scale", 100) != 100) or any(
             (options or {}).get(name, False) for name in PERFORMANCE_EFFECTS
         ):
-            raise ValueError("Eboot não reconhecido: patches exigem SHA-256 validado")
+            raise ValueError("Unrecognized eboot: patches require a validated SHA-256")
         # A prepared directory may be manually reused after replacing the game:
         # never leave a stale patches.bin from a different executable active.
         (prepared / "patches.bin").unlink(missing_ok=True)
         (prepared / "patch-validation.json").unlink(missing_ok=True)
-        print("Eboot sem perfil Android de patches conhecido; removidos patches antigos.", flush=True)
+        print("No known Android patch profile for this eboot; removed old patches.", flush=True)
         return
     effective = dict(options or {})
     # Never apply 01.00 offsets to an unknown 01.11 binary variant.
     # The supplied 3cfa... SELF has a separately validated guarded layout.
     if (profile == "01.11" and digest not in RESOLUTION_111_SELF_SHA256 and
             effective.get("resolution", "original") != "original"):
-        print("Aviso: resolução reduzida sem assinatura validada nesta variante do eboot 01.11; usando Original.", flush=True)
-        effective["resolution"] = "original"
+        raise ValueError("Resolution patches are not verified for this 01.11 executable; select 100%")
     requested = selected_options(effective, profile, digest)
     spec = importlib.util.spec_from_file_location("tlou_patch_writer", source / "tools/probe_tlou.py")
     module = importlib.util.module_from_spec(spec)
@@ -469,13 +537,18 @@ def write_selected(source, prepared, options):
     for name, changes in patches.items():
         for at, expected, _ in changes:
             if read(at, len(bytes.fromhex(expected))) != bytes.fromhex(expected):
-                raise ValueError("Assinatura divergente no patch " + name + " em " + hex(at))
+                raise ValueError("Patch signature mismatch: " + name + " at " + hex(at))
     temp = prepared / "patches.bin.new"
     module.image_patches(elf_path, temp, patches)
     temp.replace(prepared / "patches.bin")
+    scale = (options or {}).get("resolution_scale")
+    size = scale_dimensions(scale) if scale is not None else None
     report = {"profile": digest, "game_version": profile, "selected": list(requested),
               "resolution": effective.get("resolution", "original"),
               "requested_resolution": (options or {}).get("resolution", "original"),
+              "resolution_scale": scale, "scene_size": list(size) if size else None,
+              "fixes": (options or {}).get("fixes", "default"),
+              "patches_sha256": hashlib.sha256((prepared / "patches.bin").read_bytes()).hexdigest(),
               "validated": True}
     (prepared / "patch-validation.json").write_text(json.dumps(report, indent=2)+"\n")
-    print("Patches validados: " + (", ".join(requested) or "Original; correções de estabilidade"), flush=True)
+    print("Validated patches: " + (", ".join(requested) or "Original; stability fixes"), flush=True)

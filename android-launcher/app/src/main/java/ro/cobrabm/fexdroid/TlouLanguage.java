@@ -21,21 +21,13 @@ final class TlouLanguage {
      * Unsupported system languages fall back to EN (index 1), not Brazilian PT.
      * Game/guest language remains controlled only by the game's own settings. */
     static int index(Context context) {
-        String selected=PortSettings.prefs(context).getString("ui_language","auto");
-        if(!"auto".equals(selected)) {
-            for(int i=0;i<CODES.length;i++)if(CODES[i].equals(selected))return i;
-        }
-        LocaleList locales=LocaleList.getDefault();
-        Locale first=locales.isEmpty()?Locale.getDefault():locales.get(0);
-        String system=first.getLanguage().toLowerCase(Locale.ROOT);
-        for(int i=0;i<CODES.length;i++)if(CODES[i].equals(system))return i;
-        return 1; // English fallback when system locale is not supported.
+        return 1; // TLOU-AE uses English for all app-generated messages.
     }
 
     /** Language spinner: automatic first, then the ten supported manual overrides. */
     static String[] options(Context context) {
         String[] names=new String[NAMES.length+1];
-        names[0]=t(context,"Automático (idioma do sistema)");
+        names[0]=t(context,"Automatic (system language)");
         System.arraycopy(NAMES,0,names,1,NAMES.length);
         return names;
     }

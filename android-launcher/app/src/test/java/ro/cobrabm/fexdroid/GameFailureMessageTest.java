@@ -2,6 +2,10 @@ package ro.cobrabm.fexdroid;
 import org.junit.Test;
 import static org.junit.Assert.*;
 public final class GameFailureMessageTest {
+    @Test public void disabledBcFallbackHasAnActionableEnglishMessage(){
+        var m=GameFailureMessage.classify("Runtime exit 134","BC textures are unsupported by this driver with fallback Off. Select Auto.");
+        assertEquals("TLOU-BC-05",m.code);assertTrue(m.action.contains("Auto"));
+    }
     @Test public void gpuLossIsNotShownAsNativeLog() {
         GameFailureMessage m=GameFailureMessage.classify("Runtime exit 134",
             "GPU [Debug] <Critical> Device lost during submit");

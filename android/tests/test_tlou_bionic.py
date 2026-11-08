@@ -101,7 +101,7 @@ class TestTLOUBionic(unittest.TestCase):
             root = valid/"dvdroot_ps4/build/ps4/main"
             archive = root/"core.psarc"
             archive.write_bytes(b"invalid"+bytes(64))
-            with self.assertRaisesRegex(m.PortError,"PSARC inválido"):
+            with self.assertRaisesRegex(m.PortError,"Invalid or truncated PSARC"):
                 m.validate_game_assets(valid)
             # Valid minimal, internally bounded PSARC TOC without game data.
             archive.write_bytes(struct.pack(">4sI4sIIIII", b"PSAR", 0x10004, b"zlib",
@@ -109,7 +109,7 @@ class TestTLOUBionic(unittest.TestCase):
             m.validate_game_assets(valid)
             archive.write_bytes(struct.pack(">4sI4sIIIII", b"PSAR", 0x10004, b"zlib",
                 999999, 30, 1, 65536, 0) + bytes(30))
-            with self.assertRaisesRegex(m.PortError, "índice incompleto"):
+            with self.assertRaisesRegex(m.PortError, "incomplete or inconsistent index"):
                 m.validate_game_assets(valid)
             archive.unlink()
             (valid/"dvdroot_ps4/build/ps4/main/boot.txt").unlink()

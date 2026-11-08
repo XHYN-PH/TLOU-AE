@@ -1,6 +1,7 @@
 package ro.cobrabm.fexdroid;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.app.AlertDialog;
 import android.content.pm.ActivityInfo;
 import android.os.Bundle;
@@ -62,6 +63,7 @@ public final class GameActivity extends Activity {
     private HudTelemetry hudTelemetry;
     private final GpuTurboSession gpuTurbo=new GpuTurboSession();
     private Boolean lastTurboChoice;
+    private DisplayPacing displayPacing;
 
     private static FrameLayout.LayoutParams pos(int w,int h,int gravity) {
         return new FrameLayout.LayoutParams(w,h,gravity);
@@ -69,31 +71,31 @@ public final class GameActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        RunLog.write(this,"GameActivity.onCreate • início");
+        RunLog.write(this,"GameActivity.onCreate • start");
         try { initialize(); } catch(Throwable error) {
-            RunLog.failure(this,"Falha antes do runtime",error);
-            error("Falha na inicialização: "+error+"\nOs detalhes estão em Ver logs, no menu principal.");
+            RunLog.failure(this,"Failure before runtime startup",error);
+            error("Startup failed: "+error+"\nDetails are in Create diagnostic report in the main menu.");
         }
     }
 
     private void initialize() throws Exception {
         File logDir=new File(getFilesDir(),"tlou");
-        if(!logDir.isDirectory()&&!logDir.mkdirs())throw new java.io.IOException("Falha ao criar pasta dos logs");
+        if(!logDir.isDirectory()&&!logDir.mkdirs())throw new java.io.IOException("Cannot create the log directory");
         logFile=RunLog.runtime(this);
         if(logFile.exists()){ File previous=new File(logDir,"runtime-previous.log"); previous.delete(); logFile.renameTo(previous); }
-        try(FileOutputStream out=new FileOutputStream(logFile)){out.write("TLOU runtime: aguardando inicialização do processo\n".getBytes(StandardCharsets.UTF_8));}
+        try(FileOutputStream out=new FileOutputStream(logFile)){out.write("TLOU runtime: waiting for process startup\n".getBytes(StandardCharsets.UTF_8));}
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         prepared=getIntent().getStringExtra("prepared_path");
-        if (prepared==null) throw new IllegalStateException("Caminho preparado não informado");
-        RunLog.write(this,"Pasta preparada: "+prepared);
+        if (prepared==null) throw new IllegalStateException("Prepared game path was not provided");
+        RunLog.write(this,"Prepared directory: "+prepared);
         File gamePath=new File(prepared);
         if (!new File(gamePath,"boot-linked.bin").isFile() ||
-            !new File(gamePath,"content.bin").isFile()) throw new IllegalStateException("Imagem preparada ausente: "+gamePath);
+            !new File(gamePath,"content.bin").isFile()) throw new IllegalStateException("Prepared image is missing: "+gamePath);
         File stateDir=new File(getFilesDir(),"tlou");
         if (!stateDir.exists()) stateDir.mkdirs();
         File input=new File(stateDir,"controller.state");
-        RunLog.write(this,"Inicializando controle e áudio");
+        RunLog.write(this,"Initializing controls and audio");
         pad=new PadBridge(input);
         runtimePidFile=new File(stateDir,"runtime.pid");
         hudTelemetry=new HudTelemetry(this,runtimePidFile);
@@ -145,15 +147,17 @@ public final class GameActivity extends Activity {
         layout.post(()->{immersive();applyLiveSettings();});
 
         try {
-            RunLog.write(this,"Carregando JNI e iniciando apresentação AHardwareBuffer");
+            RunLog.write(this,"Loading JNI and starting AHardwareBuffer presentation");
             String bridge=Gow3Present.start(surface.getHolder(),
                     new File(stateDir,"present.sock").getAbsolutePath(),PortSettings.prefs(this).getBoolean("fullscreen",false));
             if (!bridge.startsWith("bridge running")) throw new IllegalStateException(bridge);
-            RunLog.write(this,"Apresentação: "+bridge);
+            RunLog.write(this,"Presentation: "+bridge);
             audio.start();
             started=true;
+            displayPacing=new DisplayPacing(this,surface,Integer.parseInt(PortSettings.fpsLimit(this)));
+            if(resumed)displayPacing.resume();
         } catch (Throwable err) {
-            error("Não foi possível iniciar AHardwareBuffer: "+err);
+            error("Cannot start AHardwareBuffer: "+err);
             return;
         }
         Thread starter=new Thread(this::launch,"tlou-fex-launcher");
@@ -184,23 +188,20 @@ public final class GameActivity extends Activity {
     }
 
     private void error(String message) {
-        // Keep the technical reason in the local diagnostic archive. Never
-        // display a stack trace, private storage path or the raw log in-game.
-        RunLog.write(this,"ERRO: "+message);
+        RunLog.write(this,"ERROR: "+message);
         handler.post(()->{
             if(isFinishing()||isDestroyed()||closing.get())return;
-            GameFailureMessage reason=GameFailureMessage.classify(message,tailLog());
-            GameFailureScreen.show(this,reason,this::stopAndExit);
+            GameFailureScreen.show(this,GameFailureMessage.classify(message,tailLog()),this::stopAndExit);
         });
     }
 
     private void refreshFps() {
         if(!started || closing.get())return;
         try {
-            if(resumed && game!=null && game.isAlive()) {
+            if(resumed && hasWindowFocus() && game!=null && game.isAlive()) {
                 long now=SystemClock.elapsedRealtimeNanos();
                 double fps=fpsMeter.sample(Gow3Present.framesIfLoaded(),now);
-                if(hudTelemetry!=null && PortSettings.prefs(this).getBoolean("hud_visible",true))hudTelemetry.requestSample(game,now);
+                if(hudTelemetry!=null)hudTelemetry.requestSample(game,now);
                 SharedPreferences p=PortSettings.prefs(this);
                 String mode=p.getString("hud_mode","full");
                 double cpu=hudTelemetry==null?Double.NaN:hudTelemetry.cpuPercent();
@@ -216,7 +217,7 @@ public final class GameActivity extends Activity {
 
     private File installBinary() throws Exception {
         File root=new File(getFilesDir(),"tlou/runtime");
-        if (!root.exists() && !root.mkdirs()) throw new IllegalStateException("Diretório de runtime indisponível");
+        if (!root.exists() && !root.mkdirs()) throw new IllegalStateException("Runtime directory is unavailable");
         File dst=new File(root,"tlou-probe");
         File tmp=new File(root,"tlou-probe.tmp");
         try(InputStream in=getAssets().open("runtime/gow3-probe");
@@ -225,30 +226,37 @@ public final class GameActivity extends Activity {
             int n;
             while((n=in.read(buf))!=-1) out.write(buf,0,n);
         }
-        if(tmp.length()<8192) throw new IllegalStateException("Runtime TLOU inválido no APK");
-        if (!tmp.setExecutable(true,true)) throw new IllegalStateException("Falhou chmod do loader Bionic");
-        if (dst.exists()&&!dst.delete()) throw new IllegalStateException("Falhou substituir runtime");
-        if(!tmp.renameTo(dst)) throw new IllegalStateException("Falhou instalar loader");
+        if(tmp.length()<8192) throw new IllegalStateException("Invalid TLOU-AE runtime in APK");
+        if (!tmp.setExecutable(true,true)) throw new IllegalStateException("Cannot make the Bionic loader executable");
+        if (dst.exists()&&!dst.delete()) throw new IllegalStateException("Cannot replace the runtime");
+        if(!tmp.renameTo(dst)) throw new IllegalStateException("Cannot install the loader");
         return dst;
     }
 
     private void launch() {
         SaveArchive.Guard saveGuard=null;
         try {
-            RunLog.write(this,"Instalando executável Bionic do APK");
+            RunLog.write(this,"Installing Bionic executable from APK");
             File bin=installBinary();
-            RunLog.write(this,"Loader: "+bin+" • "+bin.length()+" bytes • executável="+bin.canExecute());
+            RunLog.write(this,"Loader: "+bin+" • "+bin.length()+" bytes • executable="+bin.canExecute());
             File base=new File(prepared);
+            PortSettings.migrateResolution(this);
             File app0=new File(base,"tlou-view");
             File state=new File(getFilesDir(),"tlou");
             File user=new File(state,"user");
             saveGuard=SaveArchive.lock(user);
             if(closing.get())return;
+            // Also run when Android recreates GameActivity directly. Previously
+            // only the launcher refreshed patches, so settings/env could differ
+            // from the actual prepared executable after a restart.
+            android.content.Context launchConfig=new LaunchSnapshot(this);
+            new InstallTools(launchConfig).applyPatches(base,this::update);
+            RunLog.write(this,"Applied launch patches: "+RunLog.tail(new File(base,"patch-validation.json"),12000));
             gameChoices=new GameChoiceBridge(this,state,()->{if(playerMenu!=null)playerMenu.dismiss();if(editingControls)touch.finishEdit();touch.release();pad.reset();},pad::name);
             gameChoices.start();
             if(closing.get())return;
-            if (!user.exists() && !user.mkdirs()) throw new IllegalStateException("Falha no usuário PS4");
-            if (!app0.isDirectory()) throw new IllegalStateException("tlou-view ausente, rode o preparador TLOU");
+            if (!user.exists() && !user.mkdirs()) throw new IllegalStateException("Cannot create PS4 user directory");
+            if (!app0.isDirectory()) throw new IllegalStateException("tlou-view is missing; run game preparation again");
             List<String> args=new ArrayList<>();
             args.add(bin.getAbsolutePath());
             args.add(new File(base,"boot-linked.bin").getAbsolutePath());
@@ -272,15 +280,19 @@ public final class GameActivity extends Activity {
             Map<String,String> env=builder.environment();
             File home=new File(state,"home"), temp=new File(state,"tmp"), config=new File(home,".fex-emu"), cache=new File(home,".cache/fex-emu");
             for(File directory:new File[]{home,temp,config,cache})
-                if(!directory.isDirectory()&&!directory.mkdirs())throw new java.io.IOException("Falha ao criar "+directory);
+                if(!directory.isDirectory()&&!directory.mkdirs())throw new java.io.IOException("Cannot create "+directory);
             env.put("HOME",home.getAbsolutePath()); env.put("TMPDIR",temp.getAbsolutePath()); env.put("XDG_RUNTIME_DIR",temp.getAbsolutePath());
+            File profiles=new File(state,"profiles");
+            if(profiles.isDirectory() || profiles.mkdirs())
+                env.put("LLVM_PROFILE_FILE",new File(profiles,"%p-%m.profraw").getAbsolutePath());
+            else RunLog.write(this,"Training profile output unavailable; continuing normal launch");
             env.put("FEX_APP_CONFIG_LOCATION",config.getAbsolutePath()+"/");
             env.put("FEX_APP_DATA_LOCATION",config.getAbsolutePath()+"/");
             env.put("FEX_APP_CACHE_LOCATION",cache.getAbsolutePath()+"/");
             if(!audio.awaitReady(5000)) {
                 env.put("GOW3_AUDIO","none");
-                RunLog.write(this,"Áudio indisponível após 5 s: usando timer sem som nesta sessão");
-            } else RunLog.write(this,"Áudio PCM pronto antes da execução");
+                RunLog.write(this,"Audio unavailable after 5 seconds; using the silent timer for this session");
+            } else RunLog.write(this,"PCM audio ready before launch");
             env.put("LD_LIBRARY_PATH",getApplicationInfo().nativeLibraryDir);
             env.put("GOW3_ANDROID_PORT","1");
             env.put("GOW3_ANDROID_INPUT","1");
@@ -300,34 +312,28 @@ public final class GameActivity extends Activity {
             env.put("GOW3_OBJECT_MOTION","0");
             env.put("GOW3_FSR1","0");
             env.put("GOW3_RCAS","0");
-            PortSettings.environment(this,env);
-            // TLOU 01.11 interprets the reported 5056 MiB retail+debug pool
-            // as a devkit and reserves an EXTRA 768 MiB (the supplied device
-            // log fails here). Present the verified retail 4608 MiB size while
-            // preserving the full host backing pool and map layout.
+            PortSettings.environment(launchConfig,env);
             File ready=new File(base,"device-ready.json");
             if(ready.isFile()) {
-                org.json.JSONObject profile=new org.json.JSONObject(new String(
-                    Files.readAllBytes(ready.toPath()),StandardCharsets.UTF_8));
+                org.json.JSONObject profile=new org.json.JSONObject(new String(Files.readAllBytes(ready.toPath()),StandardCharsets.UTF_8));
                 String gameVersion=profile.optString("update_version","");
-                if(gameVersion.isEmpty()||"null".equals(gameVersion))
-                    gameVersion=profile.optString("version","");
+                if(gameVersion.isEmpty() || "null".equals(gameVersion))gameVersion=profile.optString("version","");
                 if("01.11".equals(gameVersion)){
-                    // Release 0.1.1 uses the validated universal zero-worker
-                    // preparation policy. Never override the launcher-wide zero
-                    // setting for game update 01.11 or a specific device.
-                    // Movie-plane compatibility applies only to 01.11 with resized NV12.
-                    if(env.containsKey("GOW3_MOVIE_SIZE"))
-                        env.put("TLOU_MOVIE_111_LAYOUT","1");
+                    if(env.containsKey("GOW3_MOVIE_SIZE"))env.put("TLOU_MOVIE_111_LAYOUT","1");
                     env.put("GOW3_DMEM_REPORT_MB","4608");
-                    RunLog.write(this,"TLOU 01.11: retail direct memory reported=4608 MiB (pool capacity unchanged)");
                 }
             }
-            RunLog.write(this,PortSettings.experimentReport(this,env));
-            String driver=getSharedPreferences("tlou",MODE_PRIVATE).getString("driver_path", "");
+            PresentationSize.apply(launchConfig,env);
+            env.put("TLOU_FOCUS_STATE",new File(state,"foreground.state").getAbsolutePath());
+            RunLog.write(this,PortSettings.experimentReport(launchConfig,env));
+            RunLog.captureActive(launchConfig,base,env);
+            int cap=Integer.parseInt(env.get("GOW3_FPS_LIMIT"));
+            boolean fifo=!"0".equals(env.get("GOW3_VSYNC"));
+            handler.post(()->{if(displayPacing!=null)displayPacing.setTarget(cap,fifo);});
+            String driver=PortSettings.prefs(launchConfig).getString("driver_path", "");
             if(!driver.isEmpty()) {
                 File custom=new File(driver);
-                if(!custom.isFile()) throw new IllegalStateException("Driver selecionado ausente; selecione outro driver no menu");
+                if(!custom.isFile()) throw new IllegalStateException("Selected driver is missing; choose another driver in Settings");
                 DriverArchive.validateLibrary(custom);
                 env.put("GOW3_VULKAN_DRIVER",custom.getAbsolutePath());
                 env.put("LD_LIBRARY_PATH",custom.getParent()+":"+getApplicationInfo().nativeLibraryDir);
@@ -335,23 +341,25 @@ public final class GameActivity extends Activity {
             builder.directory(app0);
             builder.redirectErrorStream(true);
             builder.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile));
-            RunLog.write(this,"Comando: "+args+"\nLD_LIBRARY_PATH="+env.get("LD_LIBRARY_PATH")+"\nDriver="+env.get("GOW3_VULKAN_DRIVER"));
-            update("Iniciando TLOU x86-64 pelo FEX...");
+            RunLog.write(this,"Command: "+args+"\nLD_LIBRARY_PATH="+env.get("LD_LIBRARY_PATH")+"\nDriver="+env.get("GOW3_VULKAN_DRIVER"));
+            update("Starting TLOU-AE x86-64 through FEX...");
             if(closing.get())return;
-            RunLog.write(this,"ProcessBuilder.start • iniciando FEX • watchdog de teste desativado");
+            RunLog.write(this,"ProcessBuilder.start • starting FEX • test watchdog disabled");
             gpuTurbo.start(this); // root is optional; if unavailable gameplay still runs
             game=builder.start();
             if(closing.get()){game.destroyForcibly();game.waitFor();return;}
-            RunLog.write(this,"Processo FEX criado");
+            RunLog.write(this,"FEX process started");
             final int result=game.waitFor();
-            RunLog.write(this,"Processo FEX finalizado: código "+result);
-            if(!closing.get()) {
-                if(result==0)handler.post(this::stopAndExit);
-                else error("Runtime encerrou com código "+result);
+            RunLog.write(this,"FEX process exited with code "+result);
+            if(result==0 && !closing.get()){handler.post(this::stopAndExit);return;}
+            if (!closing.get()) {
+                String message="Runtime exited (code "+result+"). Create a diagnostic report for details.";
+                update(message);
+                error(message+"\n"+tailLog());
             }
         } catch (Throwable err) {
-            RunLog.failure(this,"Falha ao executar FEX",err);
-            if(!closing.get()) error("Falha ao iniciar runtime TLOU: "+err+"\n"+tailLog());
+            RunLog.failure(this,"FEX execution failed",err);
+            if(!closing.get()) error("Cannot start TLOU-AE runtime: "+err+"\n"+tailLog());
         } finally {
             // Never release the transfer lock while a surviving child could still write saves.
             Process child=game;
@@ -383,6 +391,7 @@ public final class GameActivity extends Activity {
                 },"tlou-adreno-turbo-toggle").start();
             }
         }
+        if(displayPacing!=null)displayPacing.apply("settings",false);
         placeHud();
     }
     private void placeHud() {
@@ -415,7 +424,7 @@ public final class GameActivity extends Activity {
         if(playerMenu!=null && playerMenu.isShowing())return;
         touch.release();pad.reset(); // release held inputs; keep the controller/provider connected
         playerMenu=new PortMenu(this,true,new PortMenu.Actions(){
-            public void logs(){showLog();}public void exportLogs(){GameActivity.this.exportLogs();}public void chooseGame(){}public void installPkg(){}
+            public void logs(){showLog();}public void exportLogs(){RunLog.requestExport(GameActivity.this);}public void chooseGame(){}public void installPkg(){}
             public void importDriver(){}public void selectDriver(){}
             public void editControls(){editingControls=true;touch.setVisibility(View.VISIBLE);touch.setAlpha(.9f);touch.edit(()->{editingControls=false;applyLiveSettings();});}
             public void resetControls(){touch.resetLayout();applyLiveSettings();}
@@ -442,26 +451,23 @@ public final class GameActivity extends Activity {
 
     private String tailLog() { return RunLog.tail(RunLog.runtime(this),12000); }
 
-    private static final int EXPORT_LOGS_REQUEST=811;
+    @Override protected void onActivityResult(int request,int result,Intent data) {
+        super.onActivityResult(request,result,data);
+        if(request!=RunLog.EXPORT_REQUEST || result!=RESULT_OK || data==null || data.getData()==null)return;
+        android.net.Uri uri=data.getData();
+        new Thread(()->{
+            try(java.io.OutputStream output=getContentResolver().openOutputStream(uri,"w")){
+                if(output==null)throw new java.io.IOException("Cannot open log destination");
+                RunLog.export(this,output);
+                runOnUiThread(()->android.widget.Toast.makeText(this,"Logs exported",android.widget.Toast.LENGTH_SHORT).show());
+            }catch(Exception e){RunLog.failure(this,"Export logs",e);runOnUiThread(()->android.widget.Toast.makeText(this,"Log export failed: "+e.getMessage(),android.widget.Toast.LENGTH_LONG).show());}
+        },"tlou-log-export").start();
+    }
+
     private void showLog() {
-        TlouDialogs.showLogs(this,RunLog.summary(this),this::exportLogs);
-    }
-    private void exportLogs() {
-        android.content.Intent save=new android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT);
-        save.setType("application/zip");
-        save.addCategory(android.content.Intent.CATEGORY_OPENABLE);
-        save.putExtra(android.content.Intent.EXTRA_TITLE,"TLOU-Android-Logs.zip");
-        startActivityForResult(save,EXPORT_LOGS_REQUEST);
-    }
-    @Override protected void onActivityResult(int code,int resultCode,android.content.Intent data) {
-        super.onActivityResult(code,resultCode,data);
-        if(code!=EXPORT_LOGS_REQUEST || resultCode!=RESULT_OK || data==null || data.getData()==null)return;
-        try(java.io.OutputStream output=getContentResolver().openOutputStream(data.getData())) {
-            if(output==null)throw new IOException("Destino indisponível");
-            RunLog.export(this,output);
-        } catch(Exception error) {
-            android.widget.Toast.makeText(this,"Falha ao exportar logs: "+error.getMessage(),android.widget.Toast.LENGTH_LONG).show();
-        }
+        android.widget.ScrollView scroll=new android.widget.ScrollView(this);
+        TextView text=new TextView(this);text.setText(RunLog.summary(this));text.setTextIsSelectable(true);text.setTextSize(12);text.setPadding(24,16,24,16);scroll.addView(text);
+        new AlertDialog.Builder(this).setTitle(TlouLanguage.t(this,"TLOU-AE — logs")).setView(scroll).setPositiveButton(TlouLanguage.t(this,"Close"),null).show();
     }
 
     private void stopAndExit() { stopAndExit(false); }
@@ -495,6 +501,8 @@ public final class GameActivity extends Activity {
         resumed=false;
         fpsMeter.reset();
         if(audio!=null) audio.pause();
+        if(displayPacing!=null)displayPacing.pause();
+        RunLog.write(this,"Lifecycle: paused");
     }
 
     @Override protected void onResume() {
@@ -503,11 +511,26 @@ public final class GameActivity extends Activity {
         fpsMeter.reset();
         getWindow().getDecorView().post(this::immersive);
         if(audio!=null) audio.resume();
+        if(displayPacing!=null)displayPacing.resume();
+        RunLog.write(this,"Lifecycle: resumed");
+    }
+
+    private void captureWindowSample(String reason) {
+        if(closing.get())return;
+        new Thread(()->RunLog.write(this,"Window sample "+reason+": "+DiagnosticState.snapshot(this)),"tlou-window-sample").start();
     }
 
     @Override public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if(hasFocus) immersive();
+        fpsMeter.reset();
+        if(displayPacing!=null)displayPacing.focus(hasFocus);
+        RunLog.write(this,"Lifecycle: window focus="+hasFocus+" mono-ns="+System.nanoTime());
+        captureWindowSample(hasFocus?"focus-returned":"focus-lost");
+        if(hasFocus){
+            handler.postDelayed(()->{if(resumed&&!closing.get())captureWindowSample("2s-after-focus");},2000);
+            handler.postDelayed(()->{if(resumed&&!closing.get())captureWindowSample("5s-after-focus");},5000);
+        }
     }
 
     @Override protected void onDestroy() {
@@ -515,6 +538,7 @@ public final class GameActivity extends Activity {
         if(playerMenu!=null)playerMenu.dismiss();
         if(gameChoices!=null)gameChoices.close();
         if(hudTelemetry!=null)hudTelemetry.close();
+        if(displayPacing!=null)displayPacing.close();
         super.onDestroy();
     }
 }

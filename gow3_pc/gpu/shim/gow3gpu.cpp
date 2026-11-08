@@ -1,6 +1,7 @@
 #include <fmt/format.h>
 #include <tuple>
 #include "gow3_write_log.h"
+#include "gow3_mobile.h"
 // gow3: glue between the C loader and the vendored shadPS4 video core.
 #include "gow3_overlay.h"
 #include "gow3_png.h"
@@ -503,6 +504,7 @@ static void StartProfileWriter() {
 #endif
 
 extern "C" int gow3gpu_init(const Gow3GpuConfig* config) {
+    Gow3Mobile::MainThread();
     Gow3Settings::Load();
 #ifdef GOW3_PGO_GENERATE
     StartProfileWriter();

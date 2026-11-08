@@ -11,6 +11,16 @@ KNOWN="3cfa475f88ca68485b6b9230e62b84e195cdbe19e6f7295c110b8dcf8f20884e"
 
 
 class Update111UnifiedResolution(unittest.TestCase):
+    def test_percentage_presets_use_111_offsets_and_custom_scales_are_rejected(self):
+        for percent,preset in ((33,"360"),(50,"540"),(67,"720")):
+            selected=patches.selected_options({"resolution_scale":percent},"01.11",KNOWN)
+            self.assertEqual(selected["resolution-"+preset],patches.scene_aim_resolution_patches_111(preset))
+        self.assertEqual({},patches.selected_options({"resolution_scale":100},"01.11",KNOWN))
+        with self.assertRaisesRegex(ValueError,"presets only"):
+            patches.selected_options({"resolution_scale":36},"01.11",KNOWN)
+        with self.assertRaisesRegex(ValueError,"verified executable"):
+            patches.selected_options({"resolution_scale":50},"01.11","unknown")
+
     def test_only_uploaded_original_self_is_opted_in(self):
         self.assertIn(KNOWN,patches.RESOLUTION_111_SELF_SHA256)
         self.assertEqual(len(patches.RESOLUTION_111_SELF_SHA256),2)

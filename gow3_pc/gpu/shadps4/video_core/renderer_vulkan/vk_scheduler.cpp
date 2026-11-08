@@ -788,6 +788,7 @@ void Scheduler::SubmitExecution(SubmitInfo& info) {
     // NVIDIA driver, kernel calls), with the images registered since the previous slow one.
     const auto submit_start = std::chrono::steady_clock::now();
     auto submit_result = instance.GetGraphicsQueue().submit(submit_info, info.fence);
+    Gow3Stats::vulkan_submissions.fetch_add(1,std::memory_order_relaxed);
     if (const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() -
                                                                    submit_start)
                               .count();

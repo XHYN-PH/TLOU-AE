@@ -23,7 +23,7 @@ final class GameInstallState {
             return new JSONObject(new String(Files.readAllBytes(record.toPath()),
                                               StandardCharsets.UTF_8));
         } catch(Exception error) {
-            throw new IOException("Registro do jogo preparado inválido: "+record,error);
+            throw new IOException("Invalid prepared game record: "+record,error);
         }
     }
 
@@ -32,12 +32,12 @@ final class GameInstallState {
         if(InstallTools.prepared(root)) {
             JSONObject info=marker(root);
             if(info==null || info.optString("game","").isEmpty())
-                throw new IOException("A pasta preparada não informa a origem do jogo.");
+                throw new IOException("The prepared folder does not identify its base game.");
             root=new File(info.getString("game")).getCanonicalFile();
         }
         if(!new File(root,"eboot.bin").isFile() ||
            !new File(root,"sce_sys/param.sfo").isFile())
-            throw new IOException("A pasta original do jogo não está acessível. Selecione-a novamente.");
+            throw new IOException("The original game folder is inaccessible. Select it again.");
         return root;
     }
 
@@ -63,7 +63,7 @@ final class GameInstallState {
                 return requireUpdate(new File(path));
             // An explicitly installed 1.11 update MUST NOT silently fall back.
             if("01.11".equals(info.optString("update_version","")))
-                throw new IOException("A atualização 01.11 não foi localizada. Reselecione a pasta do update.");
+                throw new IOException("Update 01.11 was not found. Select its folder again.");
         }
         return null;
     }
@@ -71,8 +71,8 @@ final class GameInstallState {
     private static File requireUpdate(File path) throws Exception {
         File found=path.getCanonicalFile();
         if(!new File(found,"sce_sys/param.sfo").isFile())
-            throw new IOException("A atualização anteriormente instalada foi movida ou removida: "+found+
-                                  ". Selecione novamente o PKG ou a pasta do update.");
+            throw new IOException("The installed update was moved or removed: "+found+
+                                  ". Select the update PKG or folder again.");
         return found;
     }
 }

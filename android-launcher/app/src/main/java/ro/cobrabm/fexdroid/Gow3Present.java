@@ -18,6 +18,12 @@ public final class Gow3Present {
     private static native void nativeSetFullscreen(boolean enabled);
     private static native void nativeShutdown();
     private static native boolean nativeSetAdrenoTurbo(boolean enabled);
+    private static native void nativeSetFrameRate(float fps);
+    private static native String nativeStats();
+    private static native void nativeSetActive(boolean active);
+    static void active(boolean active){if(used)nativeSetActive(active);}
+    static void frameRate(float fps) { if(used)nativeSetFrameRate(fps); }
+    static String stats() { return used?nativeStats():"Presenter not started"; }
 
     /** Rootless KGSL GPU max-power policy; unsupported devices return false. */
     static boolean adrenoTurbo(boolean enabled) {
@@ -53,7 +59,7 @@ public final class Gow3Present {
 
     private static synchronized void setSurface(Surface surface) { nativeSetSurface(surface); }
 
-    /** Frames the game has presented to the app so far. */
+    /** Frames submitted to an available surface; excludes offscreen discards. */
     public static long frames() { return nativeFrames(); }
 
     private static boolean used;

@@ -42,6 +42,7 @@
 #include "video_core/renderer_vulkan/tlou_physics_readback.h"
 #include "video_core/renderer_vulkan/tlou_auto_readback.h"
 #include "video_core/renderer_vulkan/ring_binding_cursor.h"
+#include "video_core/renderer_vulkan/tlou_pending_filter_wordspan.h"
 #include "video_core/renderer_vulkan/tlou_srt_batch_plan.h"
 #include "video_core/renderer_vulkan/tlou_cpu_phase_sample.h"
 #include "shader_recompiler/backend/spirv/tlou_split_compute.h"
@@ -1645,29 +1646,15 @@ void Rasterizer::NotePendingGpuWrite(VAddr address, u64 size) {
 void Rasterizer::FilterPendingRange(VAddr begin, VAddr end) {
     const u64 first = begin >> PendingGranuleBits;
     const u64 last = (end - 1) >> PendingGranuleBits;
-    if (last - first >= PendingFilterBits) {
-        pending_filter.fill(~u64{0});
-        return;
-    }
-    for (u64 granule = first; granule <= last; ++granule) {
-        const u32 bit = u32(granule % PendingFilterBits);
-        pending_filter[bit / 64] |= u64{1} << (bit % 64);
-    }
+    // Word-span update for large ranges, exact old cyclic bloom coverage.
+    // Never changes pending-write overlap or retirement decisions.
+    Detail::MarkPendingRange(pending_filter, first, last);
 }
 
 bool Rasterizer::PendingFilterHit(VAddr begin, VAddr end) const {
     const u64 first = begin >> PendingGranuleBits;
     const u64 last = (end - 1) >> PendingGranuleBits;
-    if (last - first >= PendingFilterBits) {
-        return true;
-    }
-    for (u64 granule = first; granule <= last; ++granule) {
-        const u32 bit = u32(granule % PendingFilterBits);
-        if ((pending_filter[bit / 64] >> (bit % 64)) & 1) {
-            return true;
-        }
-    }
-    return false;
+    return Detail::HasPendingRange(pending_filter, first, last);
 }
 
 bool Rasterizer::PendingCopyWriteOverlaps(VAddr address, u64 size) {
@@ -1722,15 +1709,17 @@ bool Rasterizer::PendingWriteOverlaps(VAddr address, u64 size) {
         // Erasing shifts vector indices. Rebuild only when at least one
         // interval was removed; a no-op pruning pass must remain cheap.
         if (before_erase != pending_writes.size()) {
+            // A no-op retirement scan leaves the index, bounds and all bloom
+            // bits valid. Rebuild only after an actual vector compaction.
             pending_write_index.Rebuild(pending_writes);
-        }
-        pending_min = ~VAddr{0};
-        pending_max = 0;
-        pending_filter.fill(0);
-        for (const auto& write : pending_writes) {
-            pending_min = std::min(pending_min, write.begin);
-            pending_max = std::max(pending_max, write.end);
-            FilterPendingRange(write.begin, write.end);
+            pending_min = ~VAddr{0};
+            pending_max = 0;
+            pending_filter.fill(0);
+            for (const auto& write : pending_writes) {
+                pending_min = std::min(pending_min, write.begin);
+                pending_max = std::max(pending_max, write.end);
+                FilterPendingRange(write.begin, write.end);
+            }
         }
     }
     const VAddr end = address + size;
@@ -3284,6 +3273,9 @@ void Rasterizer::DispatchRecord(const ComputePipeline* pipeline) {
             auto& image = texture_cache.GetImage(texture_cache.FindImage(desc));
             runtime.ClearImage(&image, desc.view_info.range, vk::ClearValue{});
         }
+    }
+    if (cs.pgm_hash == 0x82c46b8b && CopyStencilPlane(cs)) {
+        return;
     }
     // gow3 diagnostics (GOW3_DUMP_CS_CONST=<hex shader hash>): the first 32 dwords (as floats) of
     // every buffer the dispatch reads that is up to 4 KiB, with a timestamp, 2000 lines at most.
@@ -7354,6 +7346,54 @@ void Rasterizer::DepthStencilCopy(bool is_depth, bool is_stencil) {
 
     ScopeMarkerEnd();
 }
+
+bool Rasterizer::CopyStencilPlane(const Shader::Info& cs) {
+    static const bool enabled = [] {
+        const char* env = std::getenv("GOW3_STENCIL_PLANE_COPY");
+#ifdef __ANDROID__
+        return env && env[0] == '1';
+#else
+        return !env || env[0] != '0';
+#endif
+    }();
+    if (!enabled) {
+        return false;
+    }
+    VAddr source = 0;
+    VAddr target = 0;
+    for (const auto& desc : cs.buffers) {
+        if (desc.IsSpecial()) {
+            continue;
+        }
+        (desc.is_written ? target : source) = desc.GetSharp(cs).base_address;
+    }
+    if (!source || !target) {
+        return false;
+    }
+    const VideoCore::ImageId source_id = texture_cache.FindStencilPlaneDepth(source);
+    if (!source_id) {
+        return false;
+    }
+    if (const VideoCore::ImageId target_id = texture_cache.FindStencilPlaneDepth(target)) {
+        auto& source_image = texture_cache.GetImage(source_id);
+        auto& target_image = texture_cache.GetImage(target_id);
+        if (source_id != target_id &&
+            (source_image.aspect_mask & target_image.aspect_mask & vk::ImageAspectFlagBits::eStencil)) {
+            runtime.BeforeImageAccess();
+            runtime.CopyStencil(&source_image, &target_image);
+        }
+        return false;
+    }
+    const VideoCore::ImageId texture_id = texture_cache.FindStencilTexture(target);
+    auto& source_image = texture_cache.GetImage(source_id);
+    if (!texture_id || !(source_image.aspect_mask & vk::ImageAspectFlagBits::eStencil)) {
+        return false;
+    }
+    runtime.BeforeImageAccess();
+    runtime.CopyStencilToColor(&source_image, &texture_cache.GetImage(texture_id));
+    return true;
+}
+
 
 void Rasterizer::FillBuffer(VAddr address, u32 num_bytes, u32 value, bool is_gds,
                             bool order_guest_writes) {

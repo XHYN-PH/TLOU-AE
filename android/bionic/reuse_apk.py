@@ -20,10 +20,17 @@ PACKAGING_ONLY = {"android/bionic/reuse_apk.py", "android/tests/test_launcher_re
 
 
 def unchanged():
-    paths = subprocess.check_output([
-        "git", "diff", "--name-only", BASE, "HEAD", "--", "gow3_pc", "ci",
-        "android", "tools", ".gitmodules",
-        "android-launcher/app/src/main/java/ro/cobrabm/fexdroid/Gow3Present.java"], cwd=ROOT, text=True).splitlines()
+    scope = ["gow3_pc", "ci", "android", "tools", ".gitmodules",
+             "android-launcher/app/src/main/java/ro/cobrabm/fexdroid/Gow3Present.java"]
+    try:
+        # Include local modifications and new native files, not only committed HEAD.
+        paths = subprocess.check_output(["git", "diff", "--name-only", BASE, "--", *scope],
+                                        cwd=ROOT, text=True, stderr=subprocess.DEVNULL).splitlines()
+        paths += subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard", "--", *scope],
+                                         cwd=ROOT, text=True).splitlines()
+    except subprocess.CalledProcessError:
+        print("Native source baseline unavailable; a full native build is required.", file=sys.stderr)
+        return False  # Missing baseline cannot prove native payload compatibility.
     return not (set(paths) - PACKAGING_ONLY - PREPARER_SOURCES)
 
 

@@ -256,6 +256,7 @@ private:
     } begin_memo;
     u64 begin_memo_hits = 0, begin_memo_misses = 0;
     void Resolve();
+    bool CopyStencilPlane(const Shader::Info& cs);
     void DepthStencilCopy(bool is_depth, bool is_stencil);
     void EliminateFastClear();
 

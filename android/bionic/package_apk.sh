@@ -5,6 +5,21 @@ trap 'echo "TLOU APK packaging failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 cd "$(dirname "$0")/../.."
 root=$PWD
 out=$root/out/android-bionic
+case "${TLOU_APK_CHANNEL:-test}" in
+  test)
+    test_build=true
+    application_id=com.xhyn.tlou.ae.test
+    apk="$root/out/release/TLOU-AE-v0.3-arm64.apk"
+    key="$out/ae-test-development.jks"
+    ;;
+  upstream)
+    test_build=false
+    application_id=com.daedalus.tlou.remastered
+    apk="$root/out/release/TheLastOfUsRemastered-Android-v0.1-arm64.apk"
+    key="$out/experimental-development.jks"
+    ;;
+  *) echo 'TLOU_APK_CHANNEL must be upstream or test' >&2; exit 2 ;;
+esac
 ndk="$TLOU_NDK"
 if [[ -z "$ndk" ]]; then ndk="$ANDROID_NDK_HOME"; fi
 [[ -n "$ndk" ]] || { echo "Set TLOU_NDK or ANDROID_NDK_HOME" >&2; exit 2; }
@@ -73,17 +88,19 @@ if [[ ! -s "$turnip_gen8_zip" ]] || ! echo "$turnip_gen8_sha  $turnip_gen8_zip" 
   mv "$temp" "$turnip_gen8_zip"
 fi
 echo "$turnip_gen8_sha  $turnip_gen8_zip" | sha256sum -c
+# Remove only obsolete generated bundles; installed/imported phone drivers are untouched.
+rm -f "$turnip_dir/turnip-v27-r1-a6xx-a7xx.zip" "$turnip_dir/turnip-gen8-v38-patched-a8xx.zip"
 cp "$out/bin/gow3-probe" "$assets/gow3-probe"
 for lib in libgow3cpu.so libgow3gpu.so libgow3present.so libc++_shared.so; do
   cp "$out/lib/$lib" "$stage/$lib"
 done
-gradle -p "$root/android-launcher" :app:assembleRelease --no-daemon --max-workers=2
+# A new development key cannot update the upstream APK. Use a distinct identity
+# so testing never requires uninstalling the user's existing app or its saves.
+gradle -p "$root/android-launcher" "-PtlouTestBuild=$test_build" :app:assembleRelease --no-daemon --max-workers=2
 unsigned="$root/android-launcher/app/build/outputs/apk/release/app-release-unsigned.apk"
 [[ -s "$unsigned" ]] || { echo "Gradle did not produce an unsigned APK" >&2; exit 2; }
 aligned="$out/tlou-release-aligned.apk"
-apk="$root/out/release/TheLastOfUsRemastered-Android-v0.1.1-arm64.apk"
 "$android_tools/zipalign" -f -p 4 "$unsigned" "$aligned"
-key="$out/experimental-development.jks"
 # A different key would make updates impossible. Never regenerate a release key.
 if [[ ! -s "$key" ]]; then
   echo "ERROR: existing TLOU signing identity missing; refusing a differently signed APK" >&2
@@ -93,7 +110,7 @@ fi
   --ks-pass pass:TLOU-Bionic-development --key-pass pass:TLOU-Bionic-development \
   --out "$apk" "$aligned"
 "$android_tools/apksigner" verify --verbose "$apk"
-require_command_regex "package: name='com[.]daedalus[.]tlou[.]remastered'" "$android_tools/aapt" dump badging "$apk"
+require_command_regex "package: name='$application_id'" "$android_tools/aapt" dump badging "$apk"
 require_command_regex 'lib/arm64-v8a/libgow3gpu[.]so' unzip -Z -1 "$apk"
 require_command_regex 'lib/arm64-v8a/libgow3cpu[.]so' unzip -Z -1 "$apk"
 require_command_regex 'lib/arm64-v8a/libgow3present[.]so' unzip -Z -1 "$apk"

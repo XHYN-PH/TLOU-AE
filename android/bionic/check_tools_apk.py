@@ -42,7 +42,7 @@ with zipfile.ZipFile(sys.argv[1]) as apk:
         if '/system/bin/linker64' not in interp:
             raise ValueError('Runtime is not an Android executable')
         symbols = subprocess.check_output(['readelf', '--dyn-syms', '--wide', str(root/'libgow3present.so')], text=True)
-        for method in ('nativeStart', 'nativeSetSurface', 'nativeFrames', 'nativeSetFullscreen', 'nativeSetAdrenoTurbo', 'nativeShutdown'):
+        for method in ('nativeStart', 'nativeSetSurface', 'nativeFrames', 'nativeSetFullscreen', 'nativeSetAdrenoTurbo', 'nativeShutdown', 'nativeSetFrameRate', 'nativeSetActive', 'nativeStats'):
             if 'Java_ro_cobrabm_fexdroid_Gow3Present_'+method not in symbols:
                 raise ValueError(f'Packaged presenter lacks JNI {method}')
     # The v0.1 build must ship BOTH pinned Adreno generations plus localized

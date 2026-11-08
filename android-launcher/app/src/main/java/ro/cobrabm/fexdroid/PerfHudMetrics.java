@@ -270,4 +270,3 @@ final class PerfHudMetrics {
         return new float[]{Math.max(0, Math.min(x, maxX)), Math.max(0, Math.min(y, maxY))};
     }
 }
-

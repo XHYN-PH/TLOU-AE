@@ -67,7 +67,7 @@ public class GameInstallStateTest {
             GameInstallState.update(base,base,prepared,prefs);
             fail("Missing 1.11 update silently reverted to 1.00");
         } catch(java.io.IOException expected) {
-            assertTrue(expected.getMessage().contains("atualização"));
+            assertTrue(expected.getMessage().contains("update"));
         }
     }
     @Test public void unrelatedGameNeverInheritsCachedUpdate() throws Exception {

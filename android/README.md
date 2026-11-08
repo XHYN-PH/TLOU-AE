@@ -1,17 +1,76 @@
 # Android build and validation
 
-**Current release: v0.1, ARM64 Bionic / FEX / Vulkan.** APK builds and Android
-gameplay have been tested; this is no longer an unbuilt integration stage.
+**Base release: v0.1.1, ARM64 Bionic / FEX / Vulkan.** This fork adds experimental
+performance controls. See the implementation status for this fork's actual
+build checks and outstanding phone validation; upstream gameplay results do
+not validate these changes.
 User installation and compatibility: [English](../README.md) /
 [Português](../README.pt-BR.md). See [release notes](../RELEASE_NOTES.md).
 
+## TLOU-AE 0.3
+
+The app is branded **TLOU-AE**, author **XHYN_PH**. The branch starts at upstream Android commit `7256020d485dabbd3a3250d1dd12506b23455c45`. See [0.1.1 integration status](REBASE_011_STATUS.md), [previous refinement status](REFINEMENT_STATUS.md) and [testing instructions](TEST_APK.md). Full release lint is included in prebuild checks. The test-channel package/signing identity is retained for upgrades; new APK output is `out/release/TLOU-AE-v0.3-arm64.apk`.
+
 ## Android source
 
-Use the [Android source tree](https://github.com/erickmendes22/tlou-remastered-android/tree/tlou-ui-approval-log32-20261105) when building. The historical Windows
-branch is not the Android APK implementation.
+This fork now includes the Android implementation in `android/`,
+`android-launcher/` and `gow3_pc/`. Use the current checkout to develop these
+changes. The upstream branch below is the reference base, not a replacement
+for this fork's modified source. See [implementation status](IMPLEMENTATION_STATUS.md)
+for completed work, validation limits and remaining investigations.
+
+## Prebuild checks for this fork
+
+With Python 3.12 (`unicorn==2.1.4`), GCC/G++, a full JDK 17, Gradle 8.14.3,
+Android SDK/platform and build-tools 35, and Android NDK r29 (`TLOU_NDK`) configured:
 
 ```sh
-git clone --recurse-submodules --branch tlou-ui-approval-log32-20261105 https://github.com/erickmendes22/tlou-remastered-android.git
+bash tools/android_prebuild.sh
+```
+
+This runs preparation/patch tests, host native contract tests, FPS/save tests,
+Android UI/unit tests and release lint. It does **not** assemble or sign an APK.
+The complete Android native library build and phone gameplay remain separate
+checks; a host contract test cannot validate Vulkan execution on Adreno.
+
+The arbitrary percentage scale applies to the SHA-256-guarded **01.00** profile.
+It accepts 10–100%, rounds dimensions to the same 16:9 geometry units used by
+the verified presets and shows the actual dimensions. Sub-360p scales are
+experimental. Verified 01.11 executables support the 33/50/67/100% presets. Other custom percentages require 01.00. No game bytes are
+patched without matching the existing executable and instruction guards.
+
+### ARM64 renderer profile-guided optimization
+
+`android/bionic/build_gpu.sh` accepts `TLOU_ANDROID_PGO=off` (default),
+`generate`, or `use`, and `TLOU_PGO_DIR`. Do not mix instrumentation and use
+objects; use separate `TLOU_BIONIC_GPU_BUILD` directories. An instrumented
+test APK is required to collect a representative outdoor and indoor run.
+After closing the game, log export includes up to eight complete raw profiles
+from the runtime's `profiles/` folder (up to 64 MiB each). Normal builds do
+not produce training profiles.
+
+```sh
+# Merge raw profiles collected from the Android ARM64 training build:
+"$TLOU_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-profdata" merge \
+  -o /path/to/pgo/tlou.profdata /path/to/exported/profiles/*.profraw
+python3 android/bionic/pgo.py record /path/to/pgo/tlou.profdata --ndk "$TLOU_NDK"
+# A later use build validates profile format, target metadata, source,
+# compiler identity and checksum before configuration.
+```
+
+The manifest guards against accidental profile mismatches; recording a manifest
+does not prove where a profile was collected. Record only profiles from the
+matching Android training build. No Android PGO gain has been measured yet.
+
+## Upstream reference checkout
+
+The [upstream Android source tree](https://github.com/erickmendes22/tlou-remastered-android/tree/tlou-ui-approval-log32-20261105)
+is retained as a reference. The historical Windows branch is not the Android
+APK implementation. The following clone example is for studying that reference;
+use this fork's existing checkout to retain the changes above.
+
+```sh
+git clone --recurse-submodules --branch android-0.1.1-ae https://github.com/XHYN-PH/TLOU-AE.git
 cd tlou-remastered-android
 ```
 
@@ -54,6 +113,21 @@ python3 android/bionic/stage_tools.py
 bash android/bionic/package_apk.sh
 ```
 
+For a development APK installed alongside the upstream app, use
+`TLOU_APK_CHANNEL=test bash android/bionic/package_apk.sh`. This produces
+`out/release/TLOU-AE-v0.3-arm64.apk`, package `com.xhyn.tlou.ae.test`, labeled
+**TLOU-AE**. It has separate app settings and private saves. Keep the
+existing installation; select the game folder again in the test app. Retain
+`out/android-bionic/ae-test-development.jks` privately for compatible future
+test updates. Never include the private key in a shared artifact.
+
+When rebuilding the unchanged CPython/PKG dependencies is unavailable, the
+installer-only cache can be restored with
+`python3 android/bionic/restore_installer.py /path/to/upstream-v0.1.apk`.
+It accepts only the pinned upstream SHA-256. This replaces the Python/PKG build
+steps above; current preparation scripts are still staged from this checkout,
+and all modified native runtime/renderer components still require compilation.
+
 These are build steps, not instructions for players: the APK includes the
 on-device preparation tools. Do not substitute another game's native binaries.
 
@@ -65,13 +139,13 @@ python3 -m unittest discover -s android/tests -v
 bash android/bionic/test_runtime_contracts.sh
 bash android/bionic/test_fps.sh
 python3 gow3_pc/tests/test_android_save_choice.py
-gradle -p android-launcher :app:testReleaseUnitTest :app:lintVitalRelease
+gradle -p android-launcher :app:testReleaseUnitTest :app:lintRelease
 ```
 
 The Java tests require Android SDK setup. The final APK validation is:
 
 ```sh
-python3 android/bionic/check_tools_apk.py out/release/TheLastOfUsRemastered-Android-v0.1-arm64.apk
+python3 android/bionic/check_tools_apk.py out/release/TLOU-AE-v0.3-arm64.apk
 ```
 
 The validated executable profile is SHA-256 checked and every patch requires

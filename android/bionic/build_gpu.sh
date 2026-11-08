@@ -29,10 +29,18 @@ done
 # Let CMake discover include/vma as well as include; discard the old forced cache path.
 mkdir -p "$build/.cmake/api/v1/query"
 touch "$build/.cmake/api/v1/query/codemodel-v2"
+pgo=${TLOU_ANDROID_PGO:-off}
+pgo_dir=${TLOU_PGO_DIR:-$out/pgo}
+case "$pgo" in
+  off|generate) ;;
+  use) python3 android/bionic/pgo.py check "$pgo_dir/tlou.profdata" --ndk "$ndk" ;;
+  *) echo 'TLOU_ANDROID_PGO must be off, generate, or use' >&2; exit 2 ;;
+esac
+mkdir -p "$pgo_dir"
 cmake -S gow3_pc/gpu -B "$build" -G Ninja \
     -DCMAKE_TOOLCHAIN_FILE="$ndk/build/cmake/android.toolchain.cmake" \
   -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM="android-$api" -DANDROID_STL=c++_shared \
-    -DCMAKE_BUILD_TYPE=RelWithDebInfo -DGOW3_PGO=off -DGOW3_LTO="${TLOU_ANDROID_LTO:-ON}" \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo -DGOW3_PGO="$pgo" -DGOW3_PGO_DIR="$pgo_dir" -DGOW3_LTO="${TLOU_ANDROID_LTO:-ON}" \
     -DCMAKE_FIND_ROOT_PATH="$prefix" -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH \
     -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY -Dpkgcfg_lib_FFMPEG_atomic:FILEPATH="$atomic" \
     -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH "-DCMAKE_PREFIX_PATH=$prefix;$headers" \

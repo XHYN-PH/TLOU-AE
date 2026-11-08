@@ -1,0 +1,64 @@
+{
+  "app": "TLOU-AE",
+  "author": "XHYN_PH",
+  "version": "0.3-ae-test",
+  "version_code": 41,
+  "package": "com.xhyn.tlou.ae.test",
+  "base_release": "Android 0.1.1",
+  "base_commit": "7256020d485dabbd3a3250d1dd12506b23455c45",
+  "apk": "TLOU-AE-v0.3-arm64.apk",
+  "bytes": 45041136,
+  "sha256": "73b3343606fef155af571ae98a2a213defdfc5cf6790897802e76bb8e6120709",
+  "certificate_sha256": "85bcb03b1c49c34a66b34eb128965a262cb31513406b9f58675c8d3c5d83079c",
+  "update_identity_matches_previous_apk": true,
+  "native_payload_matches_build": true,
+  "preparation_scripts_match_checkout": true,
+  "signature_zip_identity": "passed",
+  "native_16k_alignment": "passed",
+  "driver_hashes": "checked by check_tools_apk.py",
+  "obsolete_bundled_drivers_absent": true,
+  "branding_and_bc_controls": "passed",
+  "prebuild": {
+    "python": 68,
+    "java": 40,
+    "full_release_lint_errors": 0,
+    "full_release_lint_warnings": 33,
+    "native_contracts": "passed",
+    "pending_filter_randomized_operations": 8000000,
+    "pending_prune_overlap_queries": 1040000,
+    "sanitizer_bounds": "passed",
+    "arm64_mobile_module": "passed",
+    "bc_spirv_specializations": 10
+  },
+  "native_rebuilt": [
+    "GPU with LTO",
+    "runtime",
+    "presenter"
+  ],
+  "fex_cpu": "unchanged verified NDK r29 local cache",
+  "pgo": "off",
+  "phone_fps_measured": false,
+  "experimental_defaults": {
+    "bc_decode": "auto",
+    "srt_retry": false,
+    "lazy_eop": false,
+    "reduced_output": false
+  },
+  "excluded_original_features": [
+    "Stable 30 preset",
+    "configuration-profile/startup recovery"
+  ],
+  "built_at_utc": "2026-11-08T06:15:47.328371+00:00",
+  "postbuild": {
+    "java": {
+      "tests": 40,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "python": 68,
+    "payload_dependency_jni": "passed",
+    "exact_native_preparer_match": "passed",
+    "deferred_wait_srt_retry_pending_prune_asan_ubsan": "passed"
+  }
+}

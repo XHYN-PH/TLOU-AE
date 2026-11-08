@@ -8,6 +8,9 @@ reuse = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(reuse)
 
 class LauncherReuseTests(unittest.TestCase):
+    def test_missing_baseline_requires_a_full_native_build(self):
+        with patch.object(reuse.subprocess,"check_output",side_effect=reuse.subprocess.CalledProcessError(128,"git")):
+            self.assertFalse(reuse.unchanged())
     def test_only_packaging_changes_allow_reuse(self):
         with patch.object(reuse.subprocess,"check_output",return_value="android/bionic/reuse_apk.py\n"):
             self.assertTrue(reuse.unchanged())

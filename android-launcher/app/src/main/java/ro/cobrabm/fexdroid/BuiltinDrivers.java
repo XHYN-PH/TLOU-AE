@@ -26,7 +26,14 @@ final class BuiltinDrivers {
 
     // Query an actual EGL renderer. Build.MODEL and Snapdragon model strings
     // cannot reliably distinguish Adreno 7xx from 8xx; do not guess.
+    private static volatile String cachedRenderer;
+    static String recommendation(){
+        String gpu;try{gpu=renderer();}catch(Throwable e){return "GPU unavailable; compare compatible drivers using the diagnostic report.";}
+        if(gpu.matches("(?i).*adreno.*\\b7[0-9]{2}\\b.*"))return gpu+": use an Adreno 7xx-compatible driver. Snapdragon 8 Gen 3 uses Adreno 750; the Gen8 V38 package is labeled for Adreno 8xx, not Snapdragon 8 Gen 3.";
+        return gpu+": choose a driver explicitly compatible with this GPU family.";
+    }
     static String renderer() {
+        if(cachedRenderer!=null)return cachedRenderer;
         EGLDisplay display=EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY);
         if(display==EGL14.EGL_NO_DISPLAY)return "";
         int[] version=new int[2];
@@ -52,6 +59,7 @@ final class BuiltinDrivers {
             if(surface==EGL14.EGL_NO_SURFACE)return "";
             if(!EGL14.eglMakeCurrent(display,surface,surface,context))return "";
             String gpu=GLES20.glGetString(GLES20.GL_RENDERER);
+            if(gpu!=null&&!gpu.isEmpty())cachedRenderer=gpu;
             return gpu==null?"":gpu;
         } finally {
             EGL14.eglMakeCurrent(display,EGL14.EGL_NO_SURFACE,

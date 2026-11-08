@@ -10,6 +10,7 @@
 #include <thread>
 #ifdef __ANDROID__
 #include "../../../src/android_cpu_policy.h"
+#include "gow3_mobile.h"
 #endif
 
 
@@ -240,6 +241,9 @@ void SetThreadName(void* thread, const char* name) {
 // MinGW with the POSIX threading model does not support pthread_setname_np
 #if !defined(_WIN32) || defined(_MSC_VER)
 void SetCurrentThreadName(const char* name) {
+#ifdef __ANDROID__
+    Gow3Mobile::ThreadNamed(name);
+#endif
     // gow3: guest thread names are kept by the C runtime.
 #ifdef __APPLE__
     pthread_setname_np(name);

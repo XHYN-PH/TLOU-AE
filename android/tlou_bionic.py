@@ -104,12 +104,12 @@ def validate_game_assets(folder: Path) -> None:
         return
     main = root / "build/ps4/main"
     if not main.is_dir():
-        print("Aviso: build/ps4/main não existe sob dvdroot_ps4; "
-              "sem verificação PSARC opcional.", flush=True)
+        print("Warning: build/ps4/main is absent below dvdroot_ps4; "
+              "optional PSARC inspection skipped.", flush=True)
         return
     if not any(main.iterdir()):
-        print("Aviso: diretório build/ps4/main vazio; "
-              "não impedindo a preparação do jogo.", flush=True)
+        print("Warning: build/ps4/main is empty; "
+              "game preparation can continue.", flush=True)
         return
     archives = 0
     for archive in main.glob("*.psarc"):
@@ -122,15 +122,15 @@ def validate_game_assets(folder: Path) -> None:
             header = data.read(32)
         size = archive.stat().st_size
         if len(header) != 32 or header[:4] != b"PSAR":
-            raise PortError(f"Arquivo PSARC inválido ou truncado: {archive.name}. Reextraia o PKG.")
+            raise PortError(f"Invalid or truncated PSARC: {archive.name}. Reextraia o PKG.")
         toc_size, entry_size, file_count, block_size = struct.unpack_from(">4I", header, 12)
         if (not 30 <= entry_size <= 256 or file_count == 0 or file_count > 1_000_000 or
             block_size == 0 or block_size > 16 * 1024 * 1024 or
             toc_size < 32 + entry_size * file_count or toc_size > size):
-            raise PortError(f"PSARC com índice incompleto ou inconsistente: {archive.name}. Reextraia o PKG.")
+            raise PortError(f"PSARC has an incomplete or inconsistent index: {archive.name}. Reextraia o PKG.")
         archives += 1
     if not archives:
-        print("Aviso: nenhum PSARC na raiz; recursos podem estar extraídos. Não é prova de instalação íntegra.", flush=True)
+        print("No root PSARC files; assets may be extracted. This does not verify installation integrity.", flush=True)
 
 
 def _link_file(source: Path, dest: Path) -> None:

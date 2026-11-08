@@ -18,6 +18,8 @@
 #include <sys/mman.h>
 #include <unistd.h>
 #include "shader_recompiler/ir/passes/srt_arm64.h"
+#include "shader_recompiler/ir/passes/tlou_srt_native_retry.h"
+#include <cerrno>
 #endif
 #include "gow3_toggles.h"
 #include "common/arch.h"
@@ -246,7 +248,8 @@ namespace Shader {
 struct NativeSrtCode {
     using Function = void (*)(const u32*, u32*);
     Function function{};
-    std::atomic<bool> enabled{true};
+    Arm64Srt::NativeFaultRetry retry;
+    std::atomic<bool> permanent_failure{false};
     void* mapping = nullptr;
     size_t size{};
     ~NativeSrtCode() {
@@ -275,7 +278,16 @@ static NativeSrtCode* CompileNativeSrt(std::span<const u32> program) {
     std::memcpy(native->mapping, code.data(), code.size() * sizeof(u32));
     auto* begin = static_cast<char*>(native->mapping);
     __builtin___clear_cache(begin, begin + native->size);
-    if (mprotect(native->mapping, native->size, PROT_READ | PROT_EXEC)) return nullptr;
+    if (mprotect(native->mapping, native->size, PROT_READ | PROT_EXEC)) {
+        // An Android execmem policy may reject anonymous RX mappings. Earlier
+        // this silently forced the slow bytecode interpreter for every SRT.
+        static std::atomic<bool> reported{false};
+        if (!reported.exchange(true, std::memory_order_relaxed)) {
+            std::printf("SRT ARM64: mprotect(RX) failed (errno=%d); native SRT unavailable, "
+                        "using interpreter\n", errno);
+        }
+        return nullptr;
+    }
     native->function = reinterpret_cast<NativeSrtCode::Function>(native->mapping);
     static std::mutex mutex;
     static std::vector<std::unique_ptr<NativeSrtCode>> mappings;
@@ -301,28 +313,45 @@ const void* SrtProgramCode(const SrtProgram* program) {
 void RunSrtWalker(SrtProgram* stored, const u32* user_data, u32* flat) {
     const auto* program = stored->words.data();
     auto* native = stored->native;
-    if (native && native->enabled.load(std::memory_order_relaxed)) {
-        // Speculative callers must see a fault, rather than accept zero tables.
+    using Attempt = Arm64Srt::NativeFaultRetry::Attempt;
+    static const bool retry_enabled=[] {
+        const char* value=std::getenv("TLOU_SRT_RETRY");return value && value[0]=='1' && value[1]=='\0';
+    }();
+    const auto attempt = !native || native->permanent_failure.load(std::memory_order_relaxed) ? Attempt::Skip :
+        retry_enabled ? native->retry.Begin(runtime_fault_recover != nullptr) : Attempt::Fast;
+    if (attempt != Attempt::Skip) {
+        // Speculative callers already have their own fault boundary. Do not
+        // re-probe a degraded walker here: a longjmp to the caller would skip
+        // updating the backoff state.
         if (runtime_fault_recover) {
             native->function(user_data, flat);
             return;
         }
-        // Use the runtime's existing fault boundary. A fault retries with the interpreter,
-        // which recovers individual loads without changing persisted bytecode.
         sigjmp_buf* const previous = runtime_fault_recover;
         sigjmp_buf recover;
         if (sigsetjmp(recover, 0) == 0) {
             runtime_fault_recover = &recover;
             native->function(user_data, flat);
             runtime_fault_recover = previous;
+            if (attempt == Attempt::Probe) {
+                native->retry.Success();
+            }
             return;
         }
         runtime_fault_recover = previous;
-        native->enabled.store(false, std::memory_order_relaxed);
+        // A bad guest pointer can be transient. Previously this single
+        // fault disabled native code forever. Now the safe interpreter handles
+        // this draw and probes native only after a bounded, growing cooldown.
+        if(retry_enabled)native->retry.Fault();
+        else native->permanent_failure.store(true,std::memory_order_relaxed);
+        static std::atomic<u32> reported{0};
+        if (reported.fetch_add(1, std::memory_order_relaxed) < 4) {
+            std::printf("SRT ARM64: native walker fault, safe interpreter in use; "
+                        "retry after %u calls\n", native->retry.Remaining());
+        }
     }
     RunSrtProgram(program, user_data, flat);
 }
-
 
 PFN_SrtWalker RegisterWalkerCode(const u8* ptr, size_t size) {
     u32 magic = 0;

@@ -10,3 +10,9 @@
 /launcher/assets/
 __pycache__/
 *.pyc
+/.local-deps/
+/out/
+/android-launcher/.gradle/
+/android-launcher/build/
+/android-launcher/app/build/
+/android-launcher/local.properties

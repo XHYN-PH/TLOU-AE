@@ -11,32 +11,37 @@ final class GameFailureMessage {
     static GameFailureMessage classify(String reason,String log) {
         String source=((reason==null?"":reason)+"\n"+(log==null?"":log))
             .toLowerCase(Locale.ROOT);
+        if(source.contains("bc textures are unsupported") || source.contains("decoded bc texture format")) {
+            return new GameFailureMessage("TLOU-BC-05","TEXTURE FORMAT UNAVAILABLE",
+                "The selected driver cannot use the requested BC texture path.",
+                "Select Auto in BC texture GPU fallback, or choose a compatible Vulkan driver, then restart.");
+        }
         if(source.contains("device lost during submit") ||
             source.contains("vk_error_device_lost") ||
-            source.contains("vk_error_device_lost")) {
-            return new GameFailureMessage("TLOU-GPU-01","O JOGO FOI INTERROMPIDO",
-                "O dispositivo gráfico parou de responder. A sessão não pode continuar com segurança.",
-                "Tente reiniciar o jogo. Caso se repita, selecione outro driver Vulkan nos ajustes.");
+            source.contains("device lost")) {
+            return new GameFailureMessage("TLOU-GPU-01","GAME INTERRUPTED",
+                "The graphics device stopped responding. This session cannot continue.",
+                "Restart the game. If this repeats, select another compatible Vulkan driver in Settings.");
         }
         if(source.contains("job system has been inactive") ||
            source.contains("jobarray waiting on counter")) {
-            return new GameFailureMessage("TLOU-JOB-02","O JOGO PAROU DE RESPONDER",
-                "Uma tarefa interna do jogo ficou bloqueada e a sessão foi encerrada.",
-                "Reinicie o jogo e tente carregar o último save. Os registros da falha foram preservados.");
+            return new GameFailureMessage("TLOU-JOB-02","GAME STOPPED RESPONDING",
+                "An internal game task stopped responding and the session ended.",
+                "Restart and load your last save. The diagnostic report includes the failure details.");
         }
         if(source.contains("libvulkan_freedreno.so") &&
            (source.contains("host fault") || source.contains("signal 11"))) {
-            return new GameFailureMessage("TLOU-DRV-03","FALHA NO DRIVER GRÁFICO",
-                "O driver Vulkan encontrou uma falha durante a execução.",
-                "Reinicie o jogo. Se voltar a ocorrer, escolha outra versão do Turnip nos ajustes.");
+            return new GameFailureMessage("TLOU-DRV-03","GRAPHICS DRIVER FAILURE",
+                "The Vulkan driver encountered a fault during gameplay.",
+                "Restart the game. If this repeats, choose another compatible Turnip version in Settings.");
         }
-        if(source.contains("imagem preparada ausente")||source.contains("boot-linked.bin")) {
-            return new GameFailureMessage("TLOU-DATA-04","ARQUIVOS DO JOGO INDISPONÍVEIS",
-                "Não foi possível encontrar os arquivos preparados necessários à inicialização.",
-                "Volte ao launcher e selecione a pasta do jogo para prepará-lo novamente.");
+        if(source.contains("prepared image missing")||source.contains("boot-linked.bin")) {
+            return new GameFailureMessage("TLOU-DATA-04","GAME FILES UNAVAILABLE",
+                "Required prepared game files could not be found.",
+                "Return to the launcher and select the game folder to prepare it again.");
         }
-        return new GameFailureMessage("TLOU-RUN-00","NÃO FOI POSSÍVEL CONTINUAR",
-            "O jogo encontrou um problema e precisou encerrar esta sessão.",
-            "Volte ao launcher e tente novamente. O diagnóstico técnico foi salvo localmente.");
+        return new GameFailureMessage("TLOU-RUN-00","CANNOT CONTINUE",
+            "The game encountered a problem and this session ended.",
+            "Return to the launcher and try again. Use Create diagnostic report to share the details.");
     }
 }

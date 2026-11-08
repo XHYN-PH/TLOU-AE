@@ -53,7 +53,7 @@ public class GameSetupDialogTest {
             }
         }
     }
-    @Test public void releaseProfileDisablesHeavyDiagnosticsAndPreservesBoundedCpuSamples() {
+    @Test public void releaseProfileKeepsHeavyDiagnosticsOffAndMakesCpuSamplingSelectable() {
         try(var controller=Robolectric.buildActivity(Activity.class).setup()) {
             Activity activity=controller.get();
             PortSettings.prefs(activity).edit().putBoolean("gpu_profile",true)
@@ -65,8 +65,11 @@ public class GameSetupDialogTest {
             env.put("TLOU_CPU_PHASE_SAMPLES","1");env.put("GOW3_GPU_PROFILE","1");
             env.put("GOW3_FRAME_STATS","1");env.put("GOW3_PERF_DIAG","1");
             PortSettings.environment(activity,env);
-            // Eight bounded samples per second expose draw/dispatch CPU phase
-            // costs without enabling verbose frame/GPU diagnostics.
+            assertEquals("1",env.get("TLOU_CPU_PHASE_SAMPLES"));
+            PortSettings.prefs(activity).edit().putString("perf_diagnostics","cpu").commit();
+            PortSettings.environment(activity,env);
+            // The explicit CPU mode retains the bounded phase sampler, without
+            // enabling expensive GPU queries or verbose per-frame diagnostics.
             assertEquals("1",env.get("TLOU_CPU_PHASE_SAMPLES"));
             // Draw workers were previously measured as a regression in TLOU.
             // Restore zero-worker default; never use a hidden stale preference

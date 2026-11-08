@@ -18,6 +18,9 @@
 #include "video_core/renderer_vulkan/vk_dlss.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_platform.h"
+#include "video_core/texture_cache/bc_decoder.h"
+#include "video_core/texture_cache/bc_decode_policy.h"
+#include <stdexcept>
 
 #include <vk_mem_alloc.h>
 
@@ -1113,8 +1116,48 @@ void Instance::CollectImageFormatInfo() {
     LOG_INFO(Render_Vulkan, "Block Texel View support: {}",
              supports_block_texel_view ? "Yes" : "No");
 
+    // gow3: BC formats that cannot be sampled are decoded before upload. Sampling and upload
+    // are what matters: storage on a BC image is speculative (Image's usage flags).
+    static constexpr vk::Format bc_formats[] = {
+        vk::Format::eBc1RgbaUnormBlock, vk::Format::eBc2UnormBlock, vk::Format::eBc3UnormBlock,
+        vk::Format::eBc4UnormBlock,     vk::Format::eBc4SnormBlock, vk::Format::eBc5UnormBlock,
+        vk::Format::eBc5SnormBlock,     vk::Format::eBc6HUfloatBlock,
+        vk::Format::eBc6HSfloatBlock,   vk::Format::eBc7UnormBlock,
+        vk::Format::eBc1RgbaSrgbBlock, vk::Format::eBc2SrgbBlock,
+        vk::Format::eBc3SrgbBlock, vk::Format::eBc7SrgbBlock};
+    const char* force_env = std::getenv("TLOU_BC_DECODE");
+    const auto mode=VideoCore::ParseBcMode(force_env?force_env:"auto");
+    std::string decoded;
+    for (const vk::Format format : bc_formats) {
+        const auto needed =
+            vk::FormatFeatureFlagBits2::eSampledImage | vk::FormatFeatureFlagBits2::eTransferDst;
+        const auto it = format_properties.find(format);
+        const bool sampled =
+            it != format_properties.end() && (it->second.optimalTilingFeatures & needed) == needed;
+        const auto path=VideoCore::SelectBcPath(mode,sampled);
+        if(path==VideoCore::BcPath::Unsupported)
+            throw std::runtime_error("BC textures are unsupported by this driver with fallback Off. Select Auto in BC texture GPU fallback.");
+        if (path==VideoCore::BcPath::Decode) {
+            const auto target=VideoCore::BcDecodedFormat(format);
+            const auto support=format_properties.find(target);
+            if(support==format_properties.end() || (support->second.optimalTilingFeatures & needed)!=needed)
+                throw std::runtime_error("The Vulkan driver cannot sample/upload the decoded BC texture format.");
+            bc_decoded_formats |= 1u << VideoCore::BcDecodeFormatIndex(format);
+            decoded += decoded.empty() ? "" : ", ";
+            decoded += vk::to_string(format);
+        }
+    }
+    if (!decoded.empty()) {
+        std::printf("GPU: %s textures are decoded on the GPU before upload (%s)\n",
+                    decoded.c_str(), mode==VideoCore::BcMode::Force ? "forced diagnostic mode" : "unsupported native sampling");
+    }
+    std::printf("GPU BC policy: %s; decoded format mask=%#x\n",force_env?force_env:"auto",bc_decoded_formats);
+
     // Check and log format support details.
     for (const auto& format : LiverpoolToVK::SurfaceFormats()) {
+        if (IsBcDecoded(format.vk_format)) {
+            continue;
+        }
         if (!IsFormatSupported(format.vk_format, format.flags)) {
             LOG_WARNING(Render_Vulkan,
                         "Surface format data_format={}, number_format={} is not fully supported "
@@ -1200,8 +1243,16 @@ bool Instance::IsFormatSupported(const vk::Format format,
     return (GetFormatFeatureFlags(format) & flags) == flags;
 }
 
+bool Instance::IsBcDecoded(const vk::Format format) const {
+    const int index = VideoCore::BcDecodeFormatIndex(format);
+    return index >= 0 && (bc_decoded_formats >> index) & 1;
+}
+
 vk::Format Instance::GetSupportedFormat(const vk::Format format,
                                         const vk::FormatFeatureFlags2 flags) const {
+    if (IsBcDecoded(format)) [[unlikely]] {
+        return VideoCore::BcDecodedFormat(format);
+    }
     if (!IsFormatSupported(format, flags)) [[unlikely]] {
         switch (format) {
         case vk::Format::eD16UnormS8Uint:

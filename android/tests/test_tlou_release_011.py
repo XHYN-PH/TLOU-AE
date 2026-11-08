@@ -11,10 +11,10 @@ class Release011(unittest.TestCase):
         build=(ANDROID/"build.gradle").read_text()
         main=(JAVA/"MainActivity.java").read_text()
         about=(JAVA/"AboutPanel.java").read_text()
-        self.assertIn("versionName '0.1.1'",build)
-        self.assertIn("versionCode 40",build)
+        self.assertIn("versionName '0.3-ae-test'",build)
+        self.assertIn("versionCode 41",build)
         self.assertIn('text("v"+TlouDialogs.version(this)',main)
-        self.assertIn('String version="0.1.1"',about)
+        self.assertIn('String version="0.3-ae-test"',about)
         self.assertIn('artFrame.addView(artVersion,artBadge)',main)
         self.assertNotIn('text("v0.1",',main)
 
@@ -35,20 +35,20 @@ class Release011(unittest.TestCase):
         self.assertIn('@style/TlouTheme',manifest)
         self.assertIn('TlouAlertTheme',theme)
         self.assertIn('static Dialog showLogs(',dialogs)
-        for label in ('Copiar','Exportar','Fechar'):
+        for label in ('Copy','Export','Close'):
             self.assertIn('"'+label+'"',dialogs)
         self.assertIn('ClipboardManager',dialogs)
         self.assertIn('RunLog.export(this,output)',(JAVA/"GameActivity.java").read_text())
         self.assertIn('TlouDialogs.showLogs(this,RunLog.summary(this),this::exportLogs)',(JAVA/"MainActivity.java").read_text())
 
     def test_release_artifacts_use_new_filename_but_keep_pinned_source_identity(self):
-        name="TheLastOfUsRemastered-Android-v0.1.1-arm64.apk"
+        name="TLOU-AE-v0.3-arm64.apk"
         package=(ROOT/"android/bionic/package_apk.sh").read_text()
         workflow=(ROOT/".github/workflows/tlou-native-apk.yml").read_text()
         self.assertIn(name,package)
         self.assertIn(name,workflow)
         self.assertIn('out/source-apk/TheLastOfUsRemastered-Android-v0.1-arm64.apk',workflow)
-        self.assertIn('name: TheLastOfUsRemastered-Android-v0.1.1-arm64',workflow)
+        self.assertIn('name: TLOU-AE-v0.3-arm64',workflow)
         self.assertIn('v0.1.1',(ROOT/"RELEASE_NOTES.md").read_text())
 
 if __name__=="__main__":

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "common/arch.h"
+#include "gow3_mobile.h"
 #include "video_core/amdgpu/pm4_cmds.h"
 #include <cstring>
 #include <functional>
@@ -442,6 +443,12 @@ void VideoOutDriver::Flip(const Request& req) {
         ++frames;
         const double window = std::chrono::duration<double>(now-start).count();
         if (window >= 5.0) {
+            static u64 previous_submits=0;
+            const auto submits=Gow3Stats::vulkan_submissions.load(std::memory_order_relaxed);
+            std::printf("TLOU GPU feed: mono-ns=%lld submits=%llu submits-per-flip=%.2f\n",
+                (long long)std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count(),
+                (unsigned long long)(submits-previous_submits),frames?double(submits-previous_submits)/frames:0);
+            previous_submits=submits;
             const auto cpu_now=ReadRendererCpuTimes();
             std::array<double,4> busy{-1,-1,-1,-1};
             for (unsigned i=0;i<4;++i)
@@ -844,6 +851,7 @@ void VideoOutDriver::DrawLastFrame() {
 bool VideoOutDriver::SubmitFlip(VideoOutPort* port, s32 index, s64 flip_arg,
                                 bool is_eop /*= false*/) {
     LogFrameEvent('S');
+    Gow3Mobile::FrameSubmitted();
     {
         std::unique_lock lock{port->port_mutex};
         if (index != -1 && port->flip_status.flip_pending_num > 16) {

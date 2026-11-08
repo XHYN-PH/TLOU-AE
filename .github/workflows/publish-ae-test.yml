@@ -1,0 +1,103 @@
+name: Publish verified TLOU-AE APK
+
+on:
+  push:
+    branches: [android-0.1.1-ae]
+    paths: ['.github/ae-release-transfer-v03.json']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tlou-ae-release-transfer
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'XHYN-PH/TLOU-AE'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate transfer metadata
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          from urllib.parse import urlsplit
+          p = json.load(open('.github/ae-release-transfer-v03.json'))
+          assert re.fullmatch(r'v[0-9A-Za-z.-]+', p['tag'])
+          assert re.fullmatch(r'[0-9a-f]{40}', p['source_commit'])
+          assert re.fullmatch(r'[0-9a-f]{64}', p['sha256'])
+          assert re.fullmatch(r'TLOU-AE-v[0-9A-Za-z.-]+-arm64\.apk', p['apk'])
+          assert isinstance(p['release_id'], int) and p['release_id'] > 0
+          u = urlsplit(p['mirror'])
+          assert u.scheme == 'https' and u.hostname == 'tmpfiles.org'
+          assert not u.username and not u.password and not any(c in p['mirror'] for c in '\n\r\0')
+          with open(os.environ['GITHUB_ENV'], 'a') as f:
+              for k, v in {'RELEASE_TAG':p['tag'], 'RELEASE_ID':p['release_id'], 'SOURCE_COMMIT':p['source_commit'], 'APK_FILE':p['apk'], 'APK_SHA256':p['sha256'], 'MIRROR':p['mirror']}.items():
+                  f.write(f'{k}={v}\n')
+          PY
+      - name: Download and verify the already signed APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ae-release"
+          cd "$RUNNER_TEMP/ae-release"
+          curl -fLsS --retry 3 --connect-timeout 20 --max-time 60 "$MIRROR" -o page.html
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from urllib.parse import urlsplit
+          class Links(HTMLParser):
+              url = None
+              def handle_starttag(self, tag, attrs):
+                  attrs = dict(attrs)
+                  if tag == 'a' and 'download' in attrs.get('class', '').split():
+                      self.url = attrs.get('href')
+          p = Links(); p.feed(open('page.html').read())
+          u = urlsplit(p.url or '')
+          assert u.scheme == 'https' and u.hostname == 'tmpfiles.org' and u.path.startswith('/dl/')
+          open('download-url.txt', 'w').write(p.url)
+          PY
+          curl -fLsS --retry 3 --connect-timeout 20 --max-time 300 "$(cat download-url.txt)" -o "$APK_FILE"
+          printf '%s  %s\n' "$APK_SHA256" "$APK_FILE" > "$APK_FILE.sha256"
+          sha256sum -c "$APK_FILE.sha256"
+          cp "$GITHUB_WORKSPACE/android/CHANGELOG_AE.md" CHANGELOG_AE.md
+          cp "$GITHUB_WORKSPACE/android/TEST_APK.md" TEST_APK.md
+          cp "$GITHUB_WORKSPACE/android/REFINEMENT_STATUS.md" REFINEMENT_STATUS.md
+          cp "$GITHUB_WORKSPACE/android/REBASE_011_STATUS.md" REBASE_011_STATUS.md
+          cp "$GITHUB_WORKSPACE/android/release-build.json" BUILD_RESULT.json
+      - name: Upload, verify and publish the existing prerelease
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/ae-release"
+          # Drafts are fetched by ID; GitHub's by-tag route can return 404 for drafts.
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" > release.json
+          python3 - <<'PY'
+          import json, os
+          r = json.load(open('release.json'))
+          assert r['id'] == int(os.environ['RELEASE_ID'])
+          assert r['author']['login'] == 'XHYN-PH'
+          assert r['tag_name'] == os.environ['RELEASE_TAG']
+          assert r['target_commitish'] == os.environ['SOURCE_COMMIT']
+          PY
+          for asset in "$APK_FILE" "$APK_FILE.sha256" CHANGELOG_AE.md TEST_APK.md REFINEMENT_STATUS.md REBASE_011_STATUS.md BUILD_RESULT.json; do
+            old=$(python3 -c 'import json,sys; print(next((a["id"] for a in json.load(open("release.json"))["assets"] if a["name"]==sys.argv[1]),""))' "$asset")
+            if [[ -n "$old" ]]; then gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$old"; fi
+            curl --fail-with-body -sS --connect-timeout 20 --max-time 300 \
+              -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' \
+              -H 'Content-Type: application/octet-stream' --data-binary "@$asset" \
+              "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$asset" > "$asset.upload.json"
+            python3 -c 'import json,os,sys; x=json.load(open(sys.argv[1]+".upload.json")); assert x["state"]=="uploaded" and x["size"]==os.path.getsize(sys.argv[1])' "$asset"
+          done
+          asset_id=$(python3 -c 'import json,os; print(json.load(open(os.environ["APK_FILE"]+".upload.json"))["id"])')
+          curl -fLsS --connect-timeout 20 --max-time 300 -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/octet-stream' "https://api.github.com/repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" -o verify.apk
+          printf '%s  verify.apk\n' "$APK_SHA256" | sha256sum -c -
+          gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            -F draft=false -F prerelease=true -f make_latest=false > published.json
+          python3 -c 'import json; r=json.load(open("published.json")); assert not r["draft"]; print(r["html_url"])'

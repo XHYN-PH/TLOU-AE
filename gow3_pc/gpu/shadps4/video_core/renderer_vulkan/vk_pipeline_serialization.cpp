@@ -938,6 +938,14 @@ bool LoadShaderMeta(Serialization::Archive& ar, Shader::Info& info,
         return false;
     }
 
+    // A shader compiled with DMA must not survive switching that mode off.
+    if (info.uses_dma && !EmulatorSettings.IsDirectMemoryAccessEnabled()) {
+        return false;
+    }
+
+    // Rain opacity is a runtime-selectable shader transform. Old metadata has
+    // no opacity key, so never load that small shader from a different mode.
+    if (info.pgm_hash == 0x2288df23) return false;
     fetch_shader_data = spec.fetch_shader_data;
     return true;
 }

@@ -40,7 +40,10 @@ def entries(path):
     return out
 
 class PerformancePatches(unittest.TestCase):
-    def trusted(self): return patch.object(profiles.hashlib,'sha256',return_value=Mock(hexdigest=lambda:profiles.BASE_SELF_SHA256))
+    def trusted(self):
+        original=hashlib.sha256
+        return patch.object(profiles.hashlib,'sha256',side_effect=lambda data=b'':
+            Mock(hexdigest=lambda:profiles.BASE_SELF_SHA256) if data==b'owned synthetic SELF fixture' else original(data))
 
     def test_mutually_exclusive_resolution_and_strict_options(self):
         for value in ['720+540',720,['720','540']]:
@@ -67,6 +70,24 @@ class PerformancePatches(unittest.TestCase):
             self.assertNotIn(0x910740,restored);self.assertNotIn(0x910b22,restored);self.assertNotIn(0x946363,restored)
             self.assertEqual(json.loads((root/'patch-validation.json').read_text())['selected'],[])
 
+    def test_no_base_fixes_keeps_resolution_guards_and_records_applied_scale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);fixture(root)
+            with self.trusted(): profiles.write_selected(ROOT,root,{'fixes':'none','resolution_scale':36})
+            result=entries(root/'patches.bin')
+            self.assertEqual(result[0x910b22],struct.pack('<I',704))
+            report=json.loads((root/'patch-validation.json').read_text())
+            self.assertEqual(report['fixes'],'none')
+            self.assertEqual(report['resolution_scale'],36)
+            self.assertEqual(report['scene_size'],[704,396])
+            self.assertEqual(report['patches_sha256'],hashlib.sha256((root/'patches.bin').read_bytes()).hexdigest())
+            with (root/'eboot.elf').open('r+b') as stream:
+                stream.seek(4096+0x910b22);stream.write(b'\x02')
+            with self.trusted(),self.assertRaisesRegex(ValueError,'Patch signature mismatch'):
+                profiles.write_selected(ROOT,root,{'fixes':'none','resolution_scale':50})
+        self.assertEqual(profiles.base_patches_for({'fixes':'none'}),{})
+        with self.assertRaises(ValueError):profiles.base_patches_for({'fixes':'typo'})
+
     def test_complete_bachata_027_write_parity(self):
         # Hash of ordered VA/length/bytes extracted from the actual 0.2.7 APK,
         # TheLastOfUsRemastered.xml. Protects all 32 writes, including native
@@ -87,14 +108,14 @@ class PerformancePatches(unittest.TestCase):
             previous=(root/'patches.bin').read_bytes()
             with (root/'eboot.elf').open('r+b') as stream:
                 stream.seek(4096+0x946363);stream.write(b'\x02')
-            with self.trusted(),self.assertRaisesRegex(ValueError,'Assinatura divergente'):
+            with self.trusted(),self.assertRaisesRegex(ValueError,'Patch signature mismatch'):
                 profiles.write_selected(ROOT,root,{'ssao':True})
             self.assertEqual((root/'patches.bin').read_bytes(),previous)
 
     def test_unknown_self_cannot_enable_known_patches(self):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp);fixture(root)
-            with self.assertRaisesRegex(ValueError,'validado'):
+            with self.assertRaisesRegex(ValueError,'validated'):
                 profiles.write_selected(ROOT,root,{'resolution':'720'})
             self.assertFalse((root/'patches.bin').exists())
 

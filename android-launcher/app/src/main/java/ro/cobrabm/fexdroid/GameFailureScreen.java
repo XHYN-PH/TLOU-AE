@@ -62,7 +62,7 @@ final class GameFailureScreen {
         panel.setBackground(shape);
         outer.addView(panel,new LinearLayout.LayoutParams(
             Math.min(dp(activity,700),activity.getResources().getDisplayMetrics().widthPixels-dp(activity,40)),-2));
-        TextView brand=line(activity,"THE LAST OF US  ·  REMASTERED",15,ACCENT,true);
+        TextView brand=line(activity,"TLOU-AE",15,ACCENT,true);
         brand.setLetterSpacing(.12f);
         panel.addView(brand);
         TextView heading=line(activity,reason.title,23,TEXT,true);
@@ -74,11 +74,13 @@ final class GameFailureScreen {
         TextView hint=line(activity,reason.action,14,MUTED,false);
         LinearLayout.LayoutParams ap=new LinearLayout.LayoutParams(-1,-2);
         ap.topMargin=dp(activity,10);panel.addView(hint,ap);
-        TextView code=line(activity,reason.code+"  ·  Diagnóstico salvo no launcher",12,ACCENT,true);
+        TextView code=line(activity,reason.code+"  ·  Diagnostic report available",12,ACCENT,true);
         LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(-1,-2);
         cp.topMargin=dp(activity,20);panel.addView(code,cp);
+        Button report=new Button(activity);report.setText("Create diagnostic report");report.setAllCaps(false);
+        report.setOnClickListener(v->RunLog.requestExport(activity));panel.addView(report,new LinearLayout.LayoutParams(-1,-2));
         Button button=new Button(activity);
-        button.setText("VOLTAR AO LAUNCHER");
+        button.setText("Return to launcher");
         button.setAllCaps(false);button.setTextColor(BG);
         GradientDrawable buttonShape=new GradientDrawable();
         buttonShape.setColor(ACCENT);buttonShape.setCornerRadius(dp(activity,6));

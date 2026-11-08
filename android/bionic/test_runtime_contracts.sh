@@ -88,7 +88,7 @@ grep -Fq 'POSTPROCESS_FULL_SITES' android/tlou_patches.py
 grep -Fq 'POSTPROCESS_HALF_SITES' android/tlou_patches.py
 grep -Fq 'half_width = struct.pack("<I", width // 2).hex()' android/tlou_patches.py
 grep -Fq 'half_height = struct.pack("<I", height // 2).hex()' android/tlou_patches.py
-grep -Fq 'Perfil de resolução unificada incompleto' android/tlou_patches.py
+grep -Fq 'Incomplete unified resolution profile' android/tlou_patches.py
 grep -Fq '0x92EF1A, 0x92EFC0' android/tlou_patches.py
 grep -Fq '0x92EF7D, 0x92F00D' android/tlou_patches.py
 grep -Fq 'env.put("TLOU_EXPECT_SCENE_SIZE",actualSize);' android-launcher/app/src/main/java/ro/cobrabm/fexdroid/PortSettings.java
@@ -239,3 +239,25 @@ g++ -std=c++20 -O2 -Wall -Wextra -Werror -pthread \
   -I "$test_dir" -I gow3_pc/gpu/shim -I gow3_pc/gpu/shadps4 \
   gow3_pc/tests/test_tlou_threaded_record_chunk.cpp -o "$test_dir/threaded-copy"
 "$test_dir/threaded-copy" --correctness-only
+
+# New bounds and mobile/cache policies run without game files or a GPU.
+for test in fault_limits mobile_policy; do
+  g++ -std=c++20 -O2 -UNDEBUG -Wall -Wextra -Werror "gow3_pc/tests/test_${test}.cpp" -o "$test_dir/$test"
+  "$test_dir/$test"
+done
+g++ -std=c++20 -O2 -UNDEBUG -Wall -Wextra -Werror -I gow3_pc/gpu/shadps4 gow3_pc/tests/test_gc_cleanup.cpp -o "$test_dir/gc-cleanup"
+"$test_dir/gc-cleanup"
+
+cc -std=c11 -O2 -Wall -Wextra -Werror gow3_pc/tests/test_frame_benchmark.c -o "$test_dir/frame-benchmark"
+"$test_dir/frame-benchmark"
+
+# AE 0.3: exact pending-filter equivalence, bounded native retry and BC routing.
+for name in test_tlou_pending_filter_wordspan test_tlou_pending_prune test_tlou_srt_native_retry test_bc_decode_policy; do
+  g++ -std=c++20 -O2 -Wall -Wextra -Werror -pthread -I gow3_pc/gpu/shadps4 "gow3_pc/tests/$name.cpp" -o "$test_dir/$name"
+  "$test_dir/$name"
+done
+g++ -std=c++20 -O2 -Wall -Wextra -Werror -I gow3_pc/gpu/shadps4 gow3_pc/tests/test_tlou_adpf_cadence.cpp -o "$test_dir/adpf-cadence"
+"$test_dir/adpf-cadence"
+g++ -std=c++20 -O2 -Wall -Wextra -Werror -fPIC -shared gow3_pc/tests/test_tlou_adpf_mock_service.cpp -o "$test_dir/libandroid.so"
+g++ -std=c++20 -O2 -Wall -Wextra -Werror -D__ANDROID__ -I gow3_pc/gpu/shadps4 gow3_pc/tests/test_tlou_adpf_mock_client.cpp -ldl -pthread -o "$test_dir/adpf-client"
+LD_LIBRARY_PATH="$test_dir" "$test_dir/adpf-client"

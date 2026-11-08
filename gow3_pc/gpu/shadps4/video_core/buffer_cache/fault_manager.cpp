@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 shadPS4 Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -8,6 +9,7 @@
 #include "common/div_ceil.h"
 #include "video_core/buffer_cache/buffer_cache.h"
 #include "video_core/buffer_cache/fault_manager.h"
+#include "video_core/buffer_cache/fault_limits.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 #include "video_core/renderer_vulkan/vk_platform.h"
 #include "video_core/renderer_vulkan/vk_scheduler.h"
@@ -146,6 +148,26 @@ void FaultManager::ProcessFaultBuffer() {
     }};
     scheduler.EndRendering();
     const auto cmdbuf = scheduler.CommandBuffer();
+    // gow3 3 Nov 2026: new device memory is not zeroed on every driver (an Intel Arc B580): bits
+    // left in it read as thousands of faults. The first pass clears it instead; the faults
+    // recorded since then are lost once, and their pages are found again the next time.
+    if (!fault_buffer_cleared) {
+        fault_buffer_cleared = true;
+        cmdbuf.fillBuffer(fault_buffer.Handle(), 0, fault_buffer_size, 0);
+        const vk::BufferMemoryBarrier2 clear_barrier = {
+            .srcStageMask = vk::PipelineStageFlagBits2::eTransfer,
+            .srcAccessMask = vk::AccessFlagBits2::eTransferWrite,
+            .dstStageMask = vk::PipelineStageFlagBits2::eAllCommands,
+            .dstAccessMask = vk::AccessFlagBits2::eShaderRead | vk::AccessFlagBits2::eShaderWrite,
+            .buffer = fault_buffer.Handle(),
+            .offset = 0,
+            .size = fault_buffer_size,
+        };
+        cmdbuf.pipelineBarrier2(vk::DependencyInfo{
+            .bufferMemoryBarrierCount = 1,
+            .pBufferMemoryBarriers = &clear_barrier,
+        });
+    }
     cmdbuf.pipelineBarrier2(vk::DependencyInfo{
         .dependencyFlags = vk::DependencyFlagBits::eByRegion,
         .bufferMemoryBarrierCount = 1,
@@ -168,7 +190,10 @@ void FaultManager::ProcessFaultBuffer() {
     scheduler.DeferOperation([this, mapped, area = current_area] {
         fault_ranges.Clear();
         const u64* fault_buf = std::bit_cast<const u64*>(mapped);
-        const u32 fault_count = fault_buf[0];
+        // gow3 3 Nov 2026: the shader counts every fault but stores the first MaxPageFaults - 1;
+        // past them the count pointed at the next areas' and other memory (a crash in ObtainBuffer
+        // on an address read from there).
+        const u32 fault_count = Detail::StoredFaultCount(fault_buf[0], MaxPageFaults);
         for (u32 i = 1; i <= fault_count; ++i) {
             fault_ranges.Add(fault_buf[i], sparse_pagesize);
             LOG_INFO(Render_Vulkan, "Accessed non-GPU cached memory at {:#x}", fault_buf[i]);

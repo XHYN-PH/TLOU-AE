@@ -1,13 +1,15 @@
-# The Last of Us Remastered — Daedalus Android
+# TLOU-AE — Android
 
 An Android adaptation of the PS4 **The Last of Us Remastered**, based on
 [ravencaio's PC port](https://github.com/ravencaio/tlou-remastered-pc).
 The game runs through an ARM64 Bionic runtime, FEX CPU translation and Vulkan rendering.
 
-**Version 0.1.1 · Android release update**
+**TLOU-AE 0.3 · author XHYN_PH · based on Android 0.1.1**
+
+This branch starts from the verified Android 0.1.1 source and adds the previous AE refinements plus configurable performance experiments. See [AE changelog](android/CHANGELOG_AE.md), [integration status](android/REBASE_011_STATUS.md) and [testing instructions](android/TEST_APK.md). Stable outdoor 30 FPS is not established.
 
 [Português (Brasil)](README.pt-BR.md) · [Release notes](RELEASE_NOTES.md) ·
-[Releases](https://github.com/erickmendes22/tlou-remastered-android/releases) · [Android source](https://github.com/erickmendes22/tlou-remastered-android/tree/tlou-ui-approval-log32-20261105) ·
+[Releases](https://github.com/XHYN-PH/TLOU-AE/releases) · [AE source](https://github.com/XHYN-PH/TLOU-AE/tree/android-0.1.1-ae) ·
 [YouTube — @daedalusemulator](https://www.youtube.com/@daedalusemulator)
 
 ## What is included
@@ -25,13 +27,10 @@ The game runs through an ARM64 Bionic runtime, FEX CPU translation and Vulkan re
 - Bundled Vulkan drivers and driver import from ZIP or SO files.
 - Save import/export as ZIP, plus an in-game save selector with actual slot
   metadata and thumbnails when supplied by the game.
-- App interface in Brazilian Portuguese, English, Spanish, French, German,
-  Italian, Turkish, Polish, Russian and Hindi. The system language is selected
-  automatically, with English as fallback; game language is selected inside the game.
+- App interface and app-generated errors are English. Game language remains the player's in-game choice.
 - Log viewing and ZIP export for troubleshooting.
 
-The tested performance settings are applied internally. Experimental benchmark
-switches are not exposed in the public interface.
+Performance settings include explained optional controls. BC texture fallback offers Auto, Off and Force. Native-walker recovery, lazy EOP submission batching and reduced output buffers are experimental and default off. Saved launch variables take precedence over matching controls.
 
 ## Requirements and supported game
 
@@ -45,7 +44,7 @@ switches are not exposed in the public interface.
 - Enough storage for the extracted game. PKG installation also needs room for
   extraction while the original package is present.
 
-Android testing includes Redmagic 10 Pro and 11 Pro. Results vary by device,
+Upstream testing includes Redmagic 10 Pro and 11 Pro; this does not validate AE changes. Results vary by device,
 scene and system configuration. PC benchmarks do not predict Android FPS.
 
 ### Bundled driver selection
@@ -91,8 +90,12 @@ previous execution. Include the device, GPU, driver, game version and settings.
 
 ## Development
 
-The Android implementation and verified build workflow are in the
-[Android source tree](https://github.com/erickmendes22/tlou-remastered-android/tree/tlou-ui-approval-log32-20261105). See the [Android build guide](android/README.md).
+This checkout includes the Android implementation and its upstream build workflow.
+See the [Android build guide](android/README.md) and
+[development implementation status](android/IMPLEMENTATION_STATUS.md) for the
+current changes, checks and outstanding native/device validation. The
+[upstream Android source tree](https://github.com/erickmendes22/tlou-remastered-android/tree/tlou-ui-approval-log32-20261105)
+remains the reference base.
 The repository's historical Windows code remains available; it is not the APK
 build procedure. Documentation changes alone do not require generating an APK.
 

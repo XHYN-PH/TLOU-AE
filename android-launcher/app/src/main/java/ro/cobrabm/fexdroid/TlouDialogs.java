@@ -32,7 +32,7 @@ final class TlouDialogs {
         try {
             return activity.getPackageManager().getPackageInfo(activity.getPackageName(),0).versionName;
         } catch(Exception ignored) {
-            return "0.1.1";
+            return "0.3-ae-test";
         }
     }
     static int dp(Context c,int value) {
@@ -101,10 +101,10 @@ final class TlouDialogs {
         panel.setPadding(dp(activity,18),dp(activity,18),dp(activity,18),dp(activity,16));
         panel.setBackground(background(activity,PANEL,20));
 
-        TextView title=text(activity,"TLOU — logs",20,INK);
+        TextView title=text(activity,"TLOU-AE — diagnostics",20,INK);
         title.setTypeface(Typeface.create("sans-serif-condensed",Typeface.BOLD));
         panel.addView(title);
-        TextView subtitle=text(activity,"DAEDALUS / ANDROID  •  v"+version(activity),11,OLIVE);
+        TextView subtitle=text(activity,"TLOU-AE / XHYN_PH  •  v"+version(activity),11,OLIVE);
         subtitle.setLetterSpacing(.08f);
         subtitle.setPadding(0,dp(activity,6),0,dp(activity,12));
         panel.addView(subtitle);
@@ -127,19 +127,19 @@ final class TlouDialogs {
         LinearLayout actions=new LinearLayout(activity);
         actions.setGravity(Gravity.CENTER_VERTICAL);
         actions.setOrientation(LinearLayout.HORIZONTAL);
-        Button copy=logButton(activity,"Copiar",false,()->{
+        Button copy=logButton(activity,"Copy",false,()->{
             ClipboardManager clipboard=(ClipboardManager)activity.getSystemService(Context.CLIPBOARD_SERVICE);
             if(clipboard!=null)clipboard.setPrimaryClip(ClipData.newPlainText("TLOU logs",logs));
-            Toast.makeText(activity,TlouLanguage.t(activity,"Logs copiados"),Toast.LENGTH_SHORT).show();
+            Toast.makeText(activity,TlouLanguage.t(activity,"Logs copied"),Toast.LENGTH_SHORT).show();
         });
         LinearLayout.LayoutParams buttonParams=new LinearLayout.LayoutParams(0,dp(activity,46),1);
         actions.addView(copy,buttonParams);
         if(export!=null) {
-            Button exportBtn=logButton(activity,"Exportar",false,()->{dialog.dismiss();export.run();});
+            Button exportBtn=logButton(activity,"Export",false,()->{dialog.dismiss();export.run();});
             LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,dp(activity,46),1);
             p.leftMargin=dp(activity,8);actions.addView(exportBtn,p);
         }
-        Button close=logButton(activity,"Fechar",true,dialog::dismiss);
+        Button close=logButton(activity,"Close",true,dialog::dismiss);
         LinearLayout.LayoutParams closeParams=new LinearLayout.LayoutParams(0,dp(activity,46),1);
         closeParams.leftMargin=dp(activity,8);actions.addView(close,closeParams);
         panel.addView(actions);

@@ -35,6 +35,7 @@
 #include "video_core/texture_cache/image.h"
 #include "video_core/texture_cache/image_view.h"
 #include "video_core/texture_cache/sampler.h"
+#include "video_core/texture_cache/bc_decoder.h"
 #include "video_core/texture_cache/tile_manager.h"
 
 namespace AmdGpu {
@@ -142,6 +143,8 @@ public:
     [[nodiscard]] ImageId FindImage(ImageDesc& desc, bool exact_fmt = false);
 
     /// Retrieves image whose address matches provided
+    ImageId FindStencilPlaneDepth(VAddr address);
+    ImageId FindStencilTexture(VAddr address);
     [[nodiscard]] ImageId FindImageFromRange(VAddr address, size_t size, bool ensure_valid = true);
 
     /// gow3: a FindView result remembered by the caller for the same image and view info.
@@ -529,6 +532,7 @@ private:
     PageManager& tracker;
     BlitHelper blit_helper;
     TileManager tile_manager;
+    BcDecoder bc_decoder;
     Common::SlotVector<Image> slot_images;
     Common::SlotVector<ImageView> slot_image_views;
     tsl::robin_map<u64, Sampler> samplers;
@@ -555,6 +559,9 @@ private:
     u64 pressure_gc_samplers = 0;
     u64 critical_gc_samplers = 0;
     u64 gc_tick = 0;
+    u64 gc_second = 0;
+    u64 gc_warm_started = 0;
+    std::array<u64,64> gc_tick_at_second{};
     Common::LeastRecentlyUsedCache<ImageId, u64> lru_cache;
     Common::LeastRecentlyUsedCache<u64, u64> sampler_lru_cache;
     const bool readback_linear_images;
